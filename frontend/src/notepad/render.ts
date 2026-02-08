@@ -1,18 +1,10 @@
-import type { DrawingCommand, NotepadState, Stroke, UnitPoint } from './drawingTypes'
+import type { DrawingCommand, NotepadState, Stroke } from './drawingTypes'
 
 export type RenderOptions = {
   background?: string
 }
 
-function toPxX(p: UnitPoint, width: number) {
-  return p.x * width
-}
-
-function toPxY(p: UnitPoint, height: number) {
-  return p.y * height
-}
-
-function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, w: number, h: number) {
+function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke) {
   if (stroke.points.length < 2) return
   ctx.save()
   ctx.strokeStyle = stroke.color
@@ -22,23 +14,23 @@ function drawStroke(ctx: CanvasRenderingContext2D, stroke: Stroke, w: number, h:
 
   const pts = stroke.points
   ctx.beginPath()
-  ctx.moveTo(toPxX(pts[0], w), toPxY(pts[0], h))
+  ctx.moveTo(pts[0].x, pts[0].y)
 
   // basic smoothing via quadratic midpoints
   for (let i = 1; i < pts.length - 1; i++) {
     const p0 = pts[i]
     const p1 = pts[i + 1]
-    const mx = (toPxX(p0, w) + toPxX(p1, w)) / 2
-    const my = (toPxY(p0, h) + toPxY(p1, h)) / 2
-    ctx.quadraticCurveTo(toPxX(p0, w), toPxY(p0, h), mx, my)
+    const mx = (p0.x + p1.x) / 2
+    const my = (p0.y + p1.y) / 2
+    ctx.quadraticCurveTo(p0.x, p0.y, mx, my)
   }
   const last = pts[pts.length - 1]
-  ctx.lineTo(toPxX(last, w), toPxY(last, h))
+  ctx.lineTo(last.x, last.y)
   ctx.stroke()
   ctx.restore()
 }
 
-function drawCommand(ctx: CanvasRenderingContext2D, cmd: DrawingCommand, w: number, h: number) {
+function drawCommand(ctx: CanvasRenderingContext2D, cmd: DrawingCommand) {
   switch (cmd.kind) {
     case 'line': {
       ctx.save()
@@ -46,8 +38,8 @@ function drawCommand(ctx: CanvasRenderingContext2D, cmd: DrawingCommand, w: numb
       ctx.lineWidth = cmd.width ?? 3
       ctx.lineCap = 'round'
       ctx.beginPath()
-      ctx.moveTo(cmd.from.x * w, cmd.from.y * h)
-      ctx.lineTo(cmd.to.x * w, cmd.to.y * h)
+      ctx.moveTo(cmd.from.x, cmd.from.y)
+      ctx.lineTo(cmd.to.x, cmd.to.y)
       ctx.stroke()
       ctx.restore()
       return
@@ -61,9 +53,9 @@ function drawCommand(ctx: CanvasRenderingContext2D, cmd: DrawingCommand, w: numb
       ctx.lineJoin = 'round'
       ctx.lineCap = 'round'
       ctx.beginPath()
-      ctx.moveTo(cmd.points[0].x * w, cmd.points[0].y * h)
+      ctx.moveTo(cmd.points[0].x, cmd.points[0].y)
       for (let i = 1; i < cmd.points.length; i++) {
-        ctx.lineTo(cmd.points[i].x * w, cmd.points[i].y * h)
+        ctx.lineTo(cmd.points[i].x, cmd.points[i].y)
       }
       ctx.stroke()
       ctx.restore()
@@ -72,28 +64,21 @@ function drawCommand(ctx: CanvasRenderingContext2D, cmd: DrawingCommand, w: numb
 
     case 'rect': {
       ctx.save()
-      const x = cmd.x * w
-      const y = cmd.y * h
-      const rw = cmd.w * w
-      const rh = cmd.h * h
       if (cmd.fillColor) {
         ctx.fillStyle = cmd.fillColor
-        ctx.fillRect(x, y, rw, rh)
+        ctx.fillRect(cmd.x, cmd.y, cmd.w, cmd.h)
       }
       ctx.strokeStyle = cmd.strokeColor ?? '#1e3a8a'
       ctx.lineWidth = cmd.strokeWidth ?? 3
-      ctx.strokeRect(x, y, rw, rh)
+      ctx.strokeRect(cmd.x, cmd.y, cmd.w, cmd.h)
       ctx.restore()
       return
     }
 
     case 'circle': {
       ctx.save()
-      const cx = cmd.cx * w
-      const cy = cmd.cy * h
-      const r = cmd.r * Math.min(w, h)
       ctx.beginPath()
-      ctx.arc(cx, cy, r, 0, Math.PI * 2)
+      ctx.arc(cmd.cx, cmd.cy, cmd.r, 0, Math.PI * 2)
       if (cmd.fillColor) {
         ctx.fillStyle = cmd.fillColor
         ctx.fill()
@@ -110,7 +95,7 @@ function drawCommand(ctx: CanvasRenderingContext2D, cmd: DrawingCommand, w: numb
       ctx.fillStyle = cmd.color ?? '#1e3a8a'
       ctx.font = `${cmd.fontSize ?? 20}px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial`
       ctx.textBaseline = 'top'
-      ctx.fillText(cmd.text, cmd.x * w, cmd.y * h)
+      ctx.fillText(cmd.text, cmd.x, cmd.y)
       ctx.restore()
       return
     }
@@ -127,35 +112,50 @@ export function renderNotepad(
 ) {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
-  const w = canvas.width
-  const h = canvas.height
 
+  const { width, height, dpr } = state.canvas
+
+  // draw in CSS pixels; back-buffer uses device pixels.
   ctx.save()
-  ctx.setTransform(1, 0, 0, 1, 0, 0)
-  ctx.clearRect(0, 0, w, h)
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  ctx.clearRect(0, 0, width, height)
   if (opts.background) {
     ctx.fillStyle = opts.background
-    ctx.fillRect(0, 0, w, h)
+    ctx.fillRect(0, 0, width, height)
   }
   ctx.restore()
 
-  // Keep deterministic order: user strokes first, then Mot commands.
-  for (const s of state.strokes) drawStroke(ctx, s, w, h)
-  for (const c of state.motCommands) drawCommand(ctx, c, w, h)
+  ctx.save()
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+
+  // Keep deterministic order: Mot commands first, then user strokes (so user ink stays visible).
+  for (const c of state.motCommands) drawCommand(ctx, c)
+  for (const s of state.strokes) drawStroke(ctx, s)
+
+  ctx.restore()
 }
 
-export function resizeCanvasToDisplaySize(canvas: HTMLCanvasElement, dpr: number) {
-  const parent = canvas.parentElement
-  if (!parent) return
-  const rect = parent.getBoundingClientRect()
-  const displayWidth = Math.max(1, Math.floor(rect.width))
-  const displayHeight = Math.max(1, Math.floor(rect.height))
+export function getDisplaySize(container: HTMLElement) {
+  const rect = container.getBoundingClientRect()
+  const width = Math.max(1, Math.floor(rect.width))
+  const height = Math.max(1, Math.floor(rect.height))
+  return { width, height }
+}
 
-  const nextW = Math.floor(displayWidth * dpr)
-  const nextH = Math.floor(displayHeight * dpr)
+export function resizeCanvasToDisplaySize(
+  canvas: HTMLCanvasElement,
+  container: HTMLElement,
+  dpr: number,
+) {
+  const { width, height } = getDisplaySize(container)
+
+  const nextW = Math.floor(width * dpr)
+  const nextH = Math.floor(height * dpr)
 
   if (canvas.width !== nextW || canvas.height !== nextH) {
     canvas.width = nextW
     canvas.height = nextH
   }
+
+  return { width, height }
 }

@@ -1,14 +1,14 @@
 import type {
+  CanvasMeta,
   CircleCommand,
   ClearCommand,
   DrawingCommand,
   LineCommand,
   NotepadState,
+  Point,
   PolylineCommand,
   RectCommand,
   TextCommand,
-  Unit,
-  UnitPoint,
 } from './drawingTypes'
 
 const DEFAULT_STROKE_COLOR = '#1e3a8a' // Mot blue
@@ -18,13 +18,16 @@ function isFiniteNumber(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v)
 }
 
-export function clampUnit(v: number): Unit {
-  if (!Number.isFinite(v)) return 0
-  return Math.min(1, Math.max(0, v))
+function clampPx(v: number, min: number, max: number): number {
+  if (!Number.isFinite(v)) return min
+  return Math.min(max, Math.max(min, v))
 }
 
-export function clampPoint(p: UnitPoint): UnitPoint {
-  return { x: clampUnit(p.x), y: clampUnit(p.y) }
+export function clampPoint(p: Point, canvas: CanvasMeta): Point {
+  return {
+    x: clampPx(p.x, 0, canvas.width),
+    y: clampPx(p.y, 0, canvas.height),
+  }
 }
 
 export type ValidationResult = {
@@ -33,7 +36,7 @@ export type ValidationResult = {
   reason?: string
 }
 
-export function validateCommand(cmd: DrawingCommand): ValidationResult {
+export function validateCommand(cmd: DrawingCommand, canvas: CanvasMeta): ValidationResult {
   switch (cmd.kind) {
     case 'clear':
       return { ok: true, command: cmd satisfies ClearCommand }
@@ -53,8 +56,8 @@ export function validateCommand(cmd: DrawingCommand): ValidationResult {
         ok: true,
         command: {
           ...c,
-          from: clampPoint(c.from),
-          to: clampPoint(c.to),
+          from: clampPoint(c.from, canvas),
+          to: clampPoint(c.to, canvas),
           color: c.color ?? DEFAULT_STROKE_COLOR,
           width: clampWidth(c.width ?? DEFAULT_STROKE_WIDTH),
         },
@@ -65,11 +68,11 @@ export function validateCommand(cmd: DrawingCommand): ValidationResult {
       const c = cmd as PolylineCommand
       if (!Array.isArray(c.points) || c.points.length < 2)
         return { ok: false, reason: 'polyline needs 2+ points' }
-      const points: UnitPoint[] = []
+      const points: Point[] = []
       for (const p of c.points) {
-        if (!p || !isFiniteNumber((p as UnitPoint).x) || !isFiniteNumber((p as UnitPoint).y))
+        if (!p || !isFiniteNumber((p as Point).x) || !isFiniteNumber((p as Point).y))
           return { ok: false, reason: 'polyline has non-numeric point' }
-        points.push(clampPoint(p as UnitPoint))
+        points.push(clampPoint(p as Point, canvas))
       }
       return {
         ok: true,
@@ -92,14 +95,14 @@ export function validateCommand(cmd: DrawingCommand): ValidationResult {
       ) {
         return { ok: false, reason: 'rect has non-numeric fields' }
       }
-      const w = clampUnit(c.w)
-      const h = clampUnit(c.h)
+      const w = clampPx(c.w, 0, canvas.width)
+      const h = clampPx(c.h, 0, canvas.height)
       return {
         ok: true,
         command: {
           ...c,
-          x: clampUnit(c.x),
-          y: clampUnit(c.y),
+          x: clampPx(c.x, 0, canvas.width),
+          y: clampPx(c.y, 0, canvas.height),
           w,
           h,
           strokeColor: c.strokeColor ?? DEFAULT_STROKE_COLOR,
@@ -118,9 +121,9 @@ export function validateCommand(cmd: DrawingCommand): ValidationResult {
         ok: true,
         command: {
           ...c,
-          cx: clampUnit(c.cx),
-          cy: clampUnit(c.cy),
-          r: clampUnit(c.r),
+          cx: clampPx(c.cx, 0, canvas.width),
+          cy: clampPx(c.cy, 0, canvas.height),
+          r: clampPx(c.r, 0, Math.max(canvas.width, canvas.height)),
           strokeColor: c.strokeColor ?? DEFAULT_STROKE_COLOR,
           strokeWidth: clampWidth(c.strokeWidth ?? DEFAULT_STROKE_WIDTH),
           fillColor: c.fillColor,
@@ -139,8 +142,8 @@ export function validateCommand(cmd: DrawingCommand): ValidationResult {
         ok: true,
         command: {
           ...c,
-          x: clampUnit(c.x),
-          y: clampUnit(c.y),
+          x: clampPx(c.x, 0, canvas.width),
+          y: clampPx(c.y, 0, canvas.height),
           text: c.text,
           fontSize,
           color: c.color ?? DEFAULT_STROKE_COLOR,
@@ -153,10 +156,10 @@ export function validateCommand(cmd: DrawingCommand): ValidationResult {
   }
 }
 
-export function validateCommands(commands: DrawingCommand[]): DrawingCommand[] {
+export function validateCommands(commands: DrawingCommand[], canvas: CanvasMeta): DrawingCommand[] {
   const out: DrawingCommand[] = []
   for (const cmd of commands) {
-    const res = validateCommand(cmd)
+    const res = validateCommand(cmd, canvas)
     if (res.ok && res.command) out.push(res.command)
   }
   return out
@@ -177,7 +180,7 @@ export function applyCommands(state: NotepadState, commands: DrawingCommand[]): 
   let next: NotepadState = state
   for (const cmd of commands) {
     if (cmd.kind === 'clear') {
-      next = { strokes: [], undoneStrokes: [], motCommands: [] }
+      next = { ...next, strokes: [], undoneStrokes: [], motCommands: [] }
       continue
     }
     next = { ...next, motCommands: [...next.motCommands, cmd] }

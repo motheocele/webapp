@@ -1,11 +1,17 @@
-export type Unit = number // expected in [0, 1]
+export type Pixel = number
 
-export type UnitPoint = {
-  x: Unit
-  y: Unit
+export type CanvasMeta = {
+  width: number // CSS pixels (logical)
+  height: number
+  dpr: number
 }
 
-export type StrokePoint = UnitPoint & {
+export type Point = {
+  x: Pixel
+  y: Pixel
+}
+
+export type StrokePoint = Point & {
   // timestamp in ms (optional; can be used later for velocity smoothing)
   t?: number
 }
@@ -19,25 +25,25 @@ export type Stroke = {
 
 export type LineCommand = {
   kind: 'line'
-  from: UnitPoint
-  to: UnitPoint
+  from: Point
+  to: Point
   color?: string
   width?: number
 }
 
 export type PolylineCommand = {
   kind: 'polyline'
-  points: UnitPoint[]
+  points: Point[]
   color?: string
   width?: number
 }
 
 export type RectCommand = {
   kind: 'rect'
-  x: Unit
-  y: Unit
-  w: Unit
-  h: Unit
+  x: Pixel
+  y: Pixel
+  w: Pixel
+  h: Pixel
   strokeColor?: string
   strokeWidth?: number
   fillColor?: string
@@ -45,9 +51,9 @@ export type RectCommand = {
 
 export type CircleCommand = {
   kind: 'circle'
-  cx: Unit
-  cy: Unit
-  r: Unit
+  cx: Pixel
+  cy: Pixel
+  r: Pixel
   strokeColor?: string
   strokeWidth?: number
   fillColor?: string
@@ -55,8 +61,8 @@ export type CircleCommand = {
 
 export type TextCommand = {
   kind: 'text'
-  x: Unit
-  y: Unit
+  x: Pixel
+  y: Pixel
   text: string
   fontSize?: number
   color?: string
@@ -81,6 +87,7 @@ export type ChatMessage = {
 }
 
 export type NotepadState = {
+  canvas: CanvasMeta
   strokes: Stroke[]
   undoneStrokes: Stroke[]
   motCommands: DrawingCommand[]
