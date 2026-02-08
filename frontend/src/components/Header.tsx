@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link, useLocation } from 'react-router-dom'
 
 const LOGIN_URL = '/.auth/login/aad'
 const LOGOUT_URL = '/.auth/logout'
@@ -6,6 +7,7 @@ const LOGOUT_URL = '/.auth/logout'
 export default function Header() {
   const [open, setOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const location = useLocation()
 
   useEffect(() => {
     function onDocMouseDown(e: MouseEvent) {
@@ -32,7 +34,24 @@ export default function Header() {
   return (
     <header className="app-header" aria-label="App header">
       <div className="app-header__inner">
-        <div className="app-header__brand">WebApp</div>
+        <div className="app-header__brand">
+          <Link to="/" className="app-header__brandLink" aria-label="Go to home">
+            WebApp
+          </Link>
+        </div>
+
+        <nav className="app-header__nav" aria-label="Primary">
+          <Link
+            to="/notepad"
+            className={
+              location.pathname.startsWith('/notepad')
+                ? 'app-header__navLink is-active'
+                : 'app-header__navLink'
+            }
+          >
+            Canvas Notepad
+          </Link>
+        </nav>
 
         <div className="app-header__spacer" />
 

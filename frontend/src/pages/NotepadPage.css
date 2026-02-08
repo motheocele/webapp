@@ -1,0 +1,191 @@
+.notepad-page {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 16px;
+  align-items: stretch;
+}
+
+@media (max-width: 900px) {
+  .notepad-page {
+    grid-template-columns: 1fr;
+  }
+}
+
+.notepad-page__canvas {
+  min-height: 520px;
+}
+
+.notepad-page__chat {
+  min-height: 520px;
+}
+
+.notepad-canvas {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+}
+
+.notepad-canvas__toolbar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.notepad-canvas__surface {
+  flex: 1;
+  min-height: 420px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.notepad-canvas__canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.np-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.np-field__label {
+  color: color-mix(in oklab, currentColor 78%, transparent);
+}
+
+.np-field--wide {
+  min-width: 220px;
+}
+
+.np-field input[type='range'] {
+  width: 140px;
+}
+
+.np-field__value {
+  min-width: 24px;
+  text-align: right;
+  color: color-mix(in oklab, currentColor 78%, transparent);
+}
+
+.np-actions {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
+}
+
+.np-btn {
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.np-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.np-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.np-btn--primary {
+  background: rgba(100, 108, 255, 0.18);
+  border-color: rgba(100, 108, 255, 0.4);
+}
+
+.notepad-chat {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.notepad-chat__title {
+  font-weight: 650;
+}
+
+.notepad-chat__list {
+  flex: 1;
+  overflow: auto;
+  padding: 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.notepad-chat__empty {
+  padding: 10px;
+}
+
+.chat-msg {
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  margin-bottom: 8px;
+}
+
+.chat-msg--user {
+  border-color: rgba(100, 108, 255, 0.35);
+}
+
+.chat-msg--mot {
+  border-color: rgba(30, 58, 138, 0.35);
+}
+
+.chat-msg__meta {
+  font-size: 12px;
+  opacity: 0.75;
+  margin-bottom: 4px;
+}
+
+.chat-msg__text {
+  white-space: pre-wrap;
+}
+
+.notepad-chat__composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notepad-chat__input {
+  resize: vertical;
+  min-height: 60px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.92);
+  font: inherit;
+}
+
+.np-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
