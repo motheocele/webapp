@@ -161,9 +161,12 @@ async function callMotViaOpenClaw({ sessionId, userText }) {
   const url = env('OPENCLAW_GATEWAY_URL', 'http://127.0.0.1:18789')
   const token = requiredEnv('OPENCLAW_GATEWAY_TOKEN')
 
+  // NOTE: We use streaming SSE here because non-stream OpenResponses responses can
+  // legitimately take a while and some environments exhibit long waits before
+  // the final JSON is returned. Streaming gives us incremental progress and a
+  // reliable completion signal.
   const body = {
     model: env('OPENCLAW_AGENT', 'openclaw:main'),
-    // Use `user` to get stable session routing per canvas session.
     user: `canvas:${sessionId}`,
     input: [
       {
@@ -172,7 +175,7 @@ async function callMotViaOpenClaw({ sessionId, userText }) {
         content: [{ type: 'input_text', text: clampStr(userText, 20000) }],
       },
     ],
-    stream: false,
+    stream: true,
     max_output_tokens: Number(env('OPENCLAW_MAX_OUTPUT_TOKENS', '700')),
   }
 
@@ -186,7 +189,7 @@ async function callMotViaOpenClaw({ sessionId, userText }) {
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
-        Accept: 'application/json',
+        Accept: 'text/event-stream',
       },
       body: JSON.stringify(body),
       signal: controller.signal,
@@ -197,8 +200,69 @@ async function callMotViaOpenClaw({ sessionId, userText }) {
       throw new Error(`OpenClaw /v1/responses failed: ${res.status} ${text}`)
     }
 
-    const json = await res.json()
-    return extractOpenResponsesText(json)
+    if (!res.body) throw new Error('OpenClaw /v1/responses: missing response body')
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder('utf-8')
+
+    let buf = ''
+    let outText = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+
+      // SSE frames are separated by blank lines.
+      while (true) {
+        const sep = buf.indexOf('\n\n')
+        if (sep === -1) break
+        const frame = buf.slice(0, sep)
+        buf = buf.slice(sep + 2)
+
+        // Only care about data: lines
+        const dataLines = frame
+          .split('\n')
+          .filter((l) => l.startsWith('data:'))
+          .map((l) => l.replace(/^data:\s?/, ''))
+
+        for (const dl of dataLines) {
+          if (!dl || dl === '[DONE]') continue
+          let obj
+          try {
+            obj = JSON.parse(dl)
+          } catch {
+            continue
+          }
+
+          // Text deltas
+          if (obj?.type === 'response.output_text.delta' && typeof obj.delta === 'string') {
+            outText += obj.delta
+          }
+
+          // Some servers may emit content parts with text.
+          if (
+            obj?.type === 'response.content_part.added' &&
+            obj?.part?.type === 'output_text' &&
+            typeof obj?.part?.text === 'string'
+          ) {
+            // part.added may include empty text; ignore (deltas will follow)
+          }
+
+          // Completion signals
+          if (obj?.type === 'response.output_text.done') {
+            // done event sometimes includes full text; prefer it if present
+            if (typeof obj.text === 'string' && obj.text.length) outText = obj.text
+          }
+
+          if (obj?.type === 'response.completed' || obj?.type === 'response.failed') {
+            return outText
+          }
+        }
+      }
+    }
+
+    return outText
   } finally {
     clearTimeout(t)
   }
