@@ -46,13 +46,24 @@ export default function NotepadPage() {
 
       unsub = t.onReply((reply) => {
         // Replace the pending Mot bubble for this request.
-        setMessages((prev) =>
-          prev.map((m) =>
+        // Extra debug: detect if we received a reply before the pending bubble existed.
+        setMessages((prev) => {
+          const hasPending = prev.some((m) => m.role === 'mot' && m.pending && m.requestId === reply.requestId)
+          if (!hasPending) {
+            // eslint-disable-next-line no-console
+            console.warn('[mot] reply has no matching pending bubble', {
+              requestId: reply.requestId,
+              sessionId,
+              replyTextPreview: reply.replyText?.slice?.(0, 120),
+              pendingCount: prev.filter((m) => m.role === 'mot' && m.pending).length,
+            })
+          }
+          return prev.map((m) =>
             m.role === 'mot' && m.pending && m.requestId === reply.requestId
               ? { ...m, pending: false, text: reply.replyText }
               : m,
-          ),
-        )
+          )
+        })
 
         setState((s) => applyMotReply(s, reply))
       })
@@ -86,33 +97,34 @@ export default function NotepadPage() {
     const createdAt = Date.now()
     setMessages((m) => [...m, { id: newMsgId(), role: 'user', text, createdAt }])
 
-    // create a pending assistant bubble tied to the requestId
+    // Create a pending assistant bubble tied to the requestId *before* sending.
+    // This avoids a race where the WS reply arrives before we render the pending bubble.
+    const requestId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`
     const pendingId = newMsgId()
 
+    setMessages((m) => [
+      ...m,
+      {
+        id: pendingId,
+        role: 'mot',
+        text: '',
+        pending: true,
+        requestId,
+        createdAt: Date.now(),
+      },
+    ])
+
     try {
-      const requestId = await t.sendChat(text, stateRef.current)
-      setMessages((m) => [
-        ...m,
-        {
-          id: pendingId,
-          role: 'mot',
-          text: '',
-          pending: true,
-          requestId,
-          createdAt: Date.now(),
-        },
-      ])
+      await t.sendChat(text, stateRef.current, requestId)
     } catch (err) {
-      // If realtime send fails, show a visible error and keep going.
-      setMessages((m) => [
-        ...m,
-        {
-          id: newMsgId(),
-          role: 'mot',
-          text: `I couldn't send that (${String(err)}).`,
-          createdAt: Date.now(),
-        },
-      ])
+      // If realtime send fails, show a visible error.
+      setMessages((m) =>
+        m.map((msg) =>
+          msg.id === pendingId
+            ? { ...msg, pending: false, text: `I couldn't send that (${String(err)}).` }
+            : msg,
+        ),
+      )
     }
   }
 
