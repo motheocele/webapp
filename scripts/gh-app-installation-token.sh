@@ -40,16 +40,18 @@ repo = os.environ['REPO']
 key_pem_raw = os.environ['KEY_PEM'].strip()
 # Azure Key Vault UI/CLI can store PEM with spaces instead of newlines.
 if "BEGIN" in key_pem_raw and "END" in key_pem_raw and "\n" not in key_pem_raw:
-    # Insert newlines after BEGIN and before END, then turn space-delimited base64 into newline-delimited.
-    for begin in ("-----BEGIN RSA PRIVATE KEY-----", "-----BEGIN PRIVATE KEY-----"):
-        if begin in key_pem_raw:
-            key_pem_raw = key_pem_raw.replace(begin, begin + "\n", 1)
-            break
-    for end in ("-----END RSA PRIVATE KEY-----", "-----END PRIVATE KEY-----"):
-        if end in key_pem_raw:
-            key_pem_raw = key_pem_raw.replace(end, "\n" + end + "\n", 1)
-            break
-    key_pem_raw = key_pem_raw.replace(" ", "\n")
+    begins = ["-----BEGIN RSA PRIVATE KEY-----", "-----BEGIN PRIVATE KEY-----"]
+    ends = ["-----END RSA PRIVATE KEY-----", "-----END PRIVATE KEY-----"]
+
+    begin = next((b for b in begins if b in key_pem_raw), None)
+    end = next((e for e in ends if e in key_pem_raw), None)
+    if begin and end:
+        start = key_pem_raw.index(begin) + len(begin)
+        stop = key_pem_raw.index(end)
+        body = key_pem_raw[start:stop].strip()
+        body = body.replace(" ", "\n")
+        key_pem_raw = f"{begin}\n{body}\n{end}\n"
+
 key_pem = key_pem_raw.encode()
 
 now = int(time.time())
