@@ -31,6 +31,7 @@ app.http('motNegotiate', {
         status: 200,
         jsonBody: {
           url: token.url,
+          hub,
           group
         }
       };
