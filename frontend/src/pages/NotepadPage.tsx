@@ -194,7 +194,12 @@ export default function NotepadPage() {
   return (
     <div className="notepad-page">
       <div className="notepad-page__canvas">
-        <CanvasBoard state={state} onChange={setState} onStrokeCommitted={onStrokeCommitted} />
+        <CanvasBoard
+          state={state}
+          onChange={setState}
+          onCanvasMetaChange={(meta) => setState((s) => ({ ...s, canvas: meta }))}
+          onStrokeCommitted={onStrokeCommitted}
+        />
 
         <div className="notepad-page__status" aria-label="Realtime status">
           <span>

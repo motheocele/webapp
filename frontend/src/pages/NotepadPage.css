@@ -38,8 +38,9 @@
 }
 
 .notepad-canvas__surface {
-  flex: 1;
-  min-height: 420px;
+  /* Fixed-ish height prevents ResizeObserver feedback loops where canvas intrinsic size
+     influences layout which influences measured size, causing runaway growth. */
+  height: clamp(420px, 65vh, 720px);
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 14px;
   overflow: hidden;

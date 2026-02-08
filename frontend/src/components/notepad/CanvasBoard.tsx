@@ -6,6 +6,7 @@ import { addPoint, commitStroke, createStroke, redo, undo } from '../../notepad/
 type Props = {
   state: NotepadState
   onChange: (next: NotepadState) => void
+  onCanvasMetaChange?: (meta: NotepadState['canvas']) => void
   onStrokeCommitted?: (stroke: Stroke) => void
 }
 
@@ -24,7 +25,7 @@ function pointFromEvent(canvas: HTMLCanvasElement, state: NotepadState, e: Point
   return { x, y, t: Date.now() }
 }
 
-export default function CanvasBoard({ state, onChange, onStrokeCommitted }: Props) {
+export default function CanvasBoard({ state, onChange, onCanvasMetaChange, onStrokeCommitted }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [penColor, setPenColor] = useState('#000000')
@@ -53,17 +54,19 @@ export default function CanvasBoard({ state, onChange, onStrokeCommitted }: Prop
 
     const ro = new ResizeObserver(() => {
       const { width, height } = resizeCanvasToDisplaySize(canvas, container, dpr)
-      onChange({ ...state, canvas: { width, height, dpr } })
-      renderNotepad(canvas, { ...state, canvas: { width, height, dpr } })
+      const meta = { width, height, dpr }
+      onCanvasMetaChange?.(meta)
+      renderNotepad(canvas, { ...state, canvas: meta })
     })
     ro.observe(container)
 
     // initial
     const { width, height } = resizeCanvasToDisplaySize(canvas, container, dpr)
+    const meta = { width, height, dpr }
     if (state.canvas.width !== width || state.canvas.height !== height || state.canvas.dpr !== dpr) {
-      onChange({ ...state, canvas: { width, height, dpr } })
+      onCanvasMetaChange?.(meta)
     }
-    renderNotepad(canvas, { ...state, canvas: { width, height, dpr } })
+    renderNotepad(canvas, { ...state, canvas: meta })
 
     return () => ro.disconnect()
     // eslint-disable-next-line react-hooks/exhaustive-deps
