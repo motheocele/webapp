@@ -1,6 +1,6 @@
 import type { DrawingCommand, NotepadState, Stroke } from './drawingTypes'
 import { applyCommands, validateCommands } from './commands'
-import { postMotRequest, negotiate } from './apiClient'
+import { NegotiateError, postMotRequest, negotiate } from './apiClient'
 import { connectPubSubWs, type PubSubWsDebug } from './pubsubWs'
 import {
   LIMITS,
@@ -143,7 +143,28 @@ export class MotRealtimeTransport implements MotTransport {
     // Important: if negotiate succeeds, we stay in realtime mode even if WS is still connecting.
     this.status = 'connecting'
 
-    const nego = await negotiate(this.sessionId)
+    let nego
+    try {
+      nego = await negotiate(this.sessionId)
+    } catch (err) {
+      const e = err as Partial<NegotiateError>
+      this.pubsubDebug = {
+        negotiate: {
+          status: 'error',
+          httpStatus: typeof e.status === 'number' ? e.status : undefined,
+          error: (err as any)?.message ? String((err as any).message) : String(err),
+          urlHost: e.url ? safeUrlHost(String(e.url)) : undefined,
+        },
+        ws: {
+          readyState: 3,
+          reconnectAttempt: 0,
+        },
+        joinGroup: { status: 'idle' },
+      }
+      // keep realtime mode; surface as disconnected so UI says retrying
+      this.status = 'disconnected'
+      throw err
+    }
 
     this.pubsubDebug = {
       negotiate: {
