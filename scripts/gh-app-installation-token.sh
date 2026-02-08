@@ -26,7 +26,10 @@ export OWNER="$OWNER"
 export REPO="$REPO"
 
 python3 - <<'PY'
-import base64, json, os, subprocess, tempfile, time, urllib.request
+import base64, json, os, time, urllib.request
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.serialization import load_pem_private_key
 
 def b64url(b: bytes) -> str:
     return base64.urlsafe_b64encode(b).decode().rstrip('=')
@@ -54,20 +57,13 @@ header = {"alg":"RS256","typ":"JWT"}
 payload = {"iat": now-30, "exp": now+9*60, "iss": appid}
 unsigned = f"{b64url(json.dumps(header,separators=(',',':')).encode())}.{b64url(json.dumps(payload,separators=(',',':')).encode())}"
 
-with tempfile.NamedTemporaryFile('wb', delete=False) as f:
-    f.write(key_pem)
-    key_path = f.name
+private_key = load_pem_private_key(key_pem, password=None)
 
-try:
-    sig = subprocess.check_output(
-        ["openssl","dgst","-sha256","-sign",key_path],
-        input=unsigned.encode()
-    )
-finally:
-    try:
-        os.remove(key_path)
-    except OSError:
-        pass
+sig = private_key.sign(
+    unsigned.encode(),
+    padding.PKCS1v15(),
+    hashes.SHA256(),
+)
 
 jwt = unsigned + "." + b64url(sig)
 
