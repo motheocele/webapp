@@ -95,14 +95,30 @@ export function validateCommand(cmd: DrawingCommand, canvas: CanvasMeta): Valida
       ) {
         return { ok: false, reason: 'rect has non-numeric fields' }
       }
-      const w = clampPx(c.w, 0, canvas.width)
-      const h = clampPx(c.h, 0, canvas.height)
+
+      // Normalize negative widths/heights so a model can specify either direction.
+      // Without this, negative w/h get clamped to 0 and the rect becomes invisible.
+      let x = c.x
+      let y = c.y
+      let w0 = c.w
+      let h0 = c.h
+      if (w0 < 0) {
+        x = x + w0
+        w0 = -w0
+      }
+      if (h0 < 0) {
+        y = y + h0
+        h0 = -h0
+      }
+
+      const w = clampPx(w0, 0, canvas.width)
+      const h = clampPx(h0, 0, canvas.height)
       return {
         ok: true,
         command: {
           ...c,
-          x: clampPx(c.x, 0, canvas.width),
-          y: clampPx(c.y, 0, canvas.height),
+          x: clampPx(x, 0, canvas.width),
+          y: clampPx(y, 0, canvas.height),
           w,
           h,
           strokeColor: c.strokeColor ?? DEFAULT_STROKE_COLOR,
