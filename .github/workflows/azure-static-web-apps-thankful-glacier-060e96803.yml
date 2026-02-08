@@ -41,7 +41,7 @@ jobs:
           ###### Repository/Build Configurations - These values can be configured to match your app requirements. ######
           # For more information regarding Static Web App workflow configurations, please visit: https://aka.ms/swaworkflowconfig
           app_location: "frontend" # App source code path
-          api_location: "" # Azure Static Web Apps supports Azure Functions for api; backend/ is ASP.NET Core.
+          api_location: "api" # Azure Functions (Node)
           output_location: "dist" # Vite default output
           github_id_token: ${{ steps.idtoken.outputs.result }}
           ###### End of Repository/Build Configurations ######
