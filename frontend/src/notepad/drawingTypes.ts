@@ -84,6 +84,9 @@ export type ChatMessage = {
   id: string
   role: 'user' | 'mot'
   text: string
+  requestId?: string
+  pending?: boolean
+  createdAt?: number
 }
 
 export type NotepadState = {

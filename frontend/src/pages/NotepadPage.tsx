@@ -2,31 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import CanvasBoard from '../components/notepad/CanvasBoard'
 import ChatPanel from '../components/notepad/ChatPanel'
 import type { ChatMessage, NotepadState, Stroke } from '../notepad/drawingTypes'
-import { applyCommands, validateCommands } from '../notepad/commands'
-import { negotiate, postMotRequest } from '../notepad/apiClient'
-import { connectPubSub } from '../notepad/pubsubClient'
-import {
-  LIMITS,
-  clampStrokeForSend,
-  safeParseResponseEvent,
-  type ReplaceStrokeEditV1,
-  type RequestMessageV1,
-} from '../notepad/protocol'
-import { motRespond } from '../notepad/motStub'
+import { createBestEffortTransport, applyMotReply, getOrCreateSessionId, type MotTransport } from '../notepad/motTransport'
 import './NotepadPage.css'
-
-function newId() {
-  return crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`
-}
-
-function getOrCreateSessionId() {
-  const key = 'mot.notepad.sessionId'
-  const existing = window.localStorage.getItem(key)
-  if (existing) return existing
-  const sid = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`
-  window.localStorage.setItem(key, sid)
-  return sid
-}
 
 const initialState: NotepadState = {
   canvas: { width: 800, height: 600, dpr: 1 },
@@ -35,18 +12,16 @@ const initialState: NotepadState = {
   motCommands: [],
 }
 
-type PendingSuggestion = {
-  requestId: string
-  edit: ReplaceStrokeEditV1
+function newMsgId() {
+  return crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
 export default function NotepadPage() {
   const [state, setState] = useState<NotepadState>(initialState)
   const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [connected, setConnected] = useState(false)
-  const [stubMode, setStubMode] = useState(false)
-  const [pending, setPending] = useState<Record<string, number>>({})
-  const [suggestions, setSuggestions] = useState<PendingSuggestion[]>([])
+  const [transport, setTransport] = useState<MotTransport | null>(null)
+  const [modeLabel, setModeLabel] = useState<'realtime' | 'stub'>('stub')
+  const [statusLabel, setStatusLabel] = useState('Connecting…')
 
   const sessionId = useMemo(() => (typeof window !== 'undefined' ? getOrCreateSessionId() : 'unknown'), [])
 
@@ -55,141 +30,99 @@ export default function NotepadPage() {
     stateRef.current = state
   }, [state])
 
-  // Connect to Web PubSub via negotiate.
   useEffect(() => {
-    let stop: (() => Promise<void>) | null = null
-    let cancelled = false
+    let disposed = false
+    let t: MotTransport | null = null
+    let unsub: (() => void) | null = null
 
-    async function run() {
-      try {
-        const nego = await negotiate(sessionId)
-        if (cancelled) return
+    async function init() {
+      setStatusLabel('Connecting…')
+      t = await createBestEffortTransport(sessionId)
+      if (disposed) return
 
-        const conn = await connectPubSub({
-          url: nego.url,
-          group: nego.group,
-          handlers: {
-            onConnected: () => setConnected(true),
-            onDisconnected: () => setConnected(false),
-            onError: () => setConnected(false),
-            onServerMessage: (msg) => {
-              const json = typeof msg === 'string' ? safeJsonParse(msg) : msg
-              const evt = safeParseResponseEvent(json)
-              if (!evt) return
-              if (evt.sessionId !== sessionId) return
+      setTransport(t)
+      setModeLabel(t.getModeLabel() as 'realtime' | 'stub')
+      setStatusLabel(statusFromTransport(t))
 
-              setPending((p) => {
-                const copy = { ...p }
-                delete copy[evt.requestId]
-                return copy
-              })
+      unsub = t.onReply((reply) => {
+        // Replace the pending Mot bubble for this request.
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.role === 'mot' && m.pending && m.requestId === reply.requestId
+              ? { ...m, pending: false, text: reply.replyText }
+              : m,
+          ),
+        )
 
-              setMessages((m) => [...m, { id: newId(), role: 'mot', text: evt.replyText }])
+        setState((s) => applyMotReply(s, reply))
+      })
 
-              setState((s) => {
-                const valid = validateCommands(evt.commands.slice(0, LIMITS.maxCommands), s.canvas)
-                return applyCommands(s, valid)
-              })
+      // Poll lightweight status label (ws events are internal to transport)
+      const interval = window.setInterval(() => {
+        if (!t) return
+        setStatusLabel(statusFromTransport(t))
+      }, 1000)
 
-              // apply edits
-              for (const edit of evt.edits) {
-                if (edit.op !== 'replaceStroke') continue
-                if (edit.confidence >= 0.8) {
-                  setState((s) => applyReplaceStroke(s, edit))
-                } else {
-                  setSuggestions((arr) => [...arr, { requestId: evt.requestId, edit }])
-                }
-              }
-            },
-          },
-        })
-
-        stop = conn.stop
-        setStubMode(false)
-      } catch (err) {
-        // If Azure isn't configured locally, fall back to stub.
-        console.warn('Realtime connect failed; using stub mode', err)
-        setStubMode(true)
-        setConnected(false)
-      }
+      return () => window.clearInterval(interval)
     }
 
-    void run()
+    let cleanupInterval: (() => void) | undefined
+    void init().then((c) => {
+      cleanupInterval = c as unknown as (() => void) | undefined
+    })
+
     return () => {
-      cancelled = true
-      void stop?.()
+      disposed = true
+      unsub?.()
+      cleanupInterval?.()
+      void t?.dispose()
     }
   }, [sessionId])
 
-  async function enqueue(type: RequestMessageV1['type'], payload: RequestMessageV1['payload']) {
-    const req: RequestMessageV1 = {
-      v: 1,
-      requestId: newId(),
-      sessionId,
-      type,
-      createdAt: new Date().toISOString(),
-      payload,
-    }
+  async function sendChat(text: string) {
+    const t = transport
+    if (!t) return
 
-    setPending((p) => ({ ...p, [req.requestId]: Date.now() }))
+    const createdAt = Date.now()
+    setMessages((m) => [...m, { id: newMsgId(), role: 'user', text, createdAt }])
+
+    // create a pending assistant bubble tied to the requestId
+    const pendingId = newMsgId()
 
     try {
-      await postMotRequest(req)
-    } catch (err) {
-      setPending((p) => {
-        const copy = { ...p }
-        delete copy[req.requestId]
-        return copy
-      })
+      const requestId = await t.sendChat(text, stateRef.current)
       setMessages((m) => [
         ...m,
         {
-          id: newId(),
+          id: pendingId,
           role: 'mot',
-          text: `I couldn't reach the backend (${String(err)}). Staying in stub mode for now.`,
+          text: '',
+          pending: true,
+          requestId,
+          createdAt: Date.now(),
         },
       ])
-      setStubMode(true)
+    } catch (err) {
+      // If realtime send fails, show a visible error and keep going.
+      setMessages((m) => [
+        ...m,
+        {
+          id: newMsgId(),
+          role: 'mot',
+          text: `I couldn't send that (${String(err)}).`,
+          createdAt: Date.now(),
+        },
+      ])
     }
-  }
-
-  function sendToMot(text: string) {
-    const trimmed = text.trim()
-    if (!trimmed) return
-
-    const userMsg: ChatMessage = { id: newId(), role: 'user', text: trimmed }
-    setMessages((m) => [...m, userMsg])
-
-    if (stubMode) {
-      const res = motRespond(trimmed, stateRef.current)
-      setMessages((m) => [...m, { id: newId(), role: 'mot', text: res.replyText }])
-      const valid = validateCommands(res.commands, stateRef.current.canvas)
-      setState((s) => applyCommands(s, valid))
-      return
-    }
-
-    void enqueue('chat_draw', {
-      text: trimmed.slice(0, LIMITS.maxTextLen),
-      canvas: stateRef.current.canvas,
-    })
   }
 
   function onStrokeCommitted(stroke: Stroke) {
-    if (stubMode) return
-
-    const safe = clampStrokeForSend(stroke, stateRef.current.canvas)
-    void enqueue('stroke_sharpen', {
-      canvas: stateRef.current.canvas,
-      stroke: safe,
+    const t = transport
+    if (!t) return
+    void t.sendStrokeSharpen(stroke, stateRef.current).catch(() => {
+      // ignore for now
     })
   }
-
-  function applySuggestion(s: PendingSuggestion) {
-    setState((st) => applyReplaceStroke(st, s.edit))
-    setSuggestions((arr) => arr.filter((x) => x !== s))
-  }
-
-  const pendingCount = Object.keys(pending).length
 
   return (
     <div className="notepad-page">
@@ -200,54 +133,25 @@ export default function NotepadPage() {
           onCanvasMetaChange={(meta) => setState((s) => ({ ...s, canvas: meta }))}
           onStrokeCommitted={onStrokeCommitted}
         />
-
-        <div className="notepad-page__status" aria-label="Realtime status">
-          <span>
-            Session: <code>{sessionId.slice(0, 8)}…</code>
-          </span>
-          <span>
-            Mode: <strong>{stubMode ? 'stub' : connected ? 'realtime' : 'connecting…'}</strong>
-          </span>
-          {pendingCount > 0 && <span>Pending: {pendingCount}</span>}
-        </div>
-
-        {suggestions.length > 0 && (
-          <div className="notepad-page__suggestions" aria-label="Stroke suggestions">
-            <div className="np-suggestions__title">Suggestions</div>
-            {suggestions.slice(0, 3).map((s) => (
-              <div key={`${s.requestId}:${s.edit.strokeId}`} className="np-suggestion">
-                <div>
-                  Replace stroke <code>{s.edit.strokeId.slice(0, 8)}…</code> (confidence{' '}
-                  {Math.round(s.edit.confidence * 100)}%)
-                </div>
-                <button type="button" className="np-btn np-btn--primary" onClick={() => applySuggestion(s)}>
-                  Apply
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
-
       <div className="notepad-page__chat">
-        <ChatPanel messages={messages} onSend={sendToMot} />
+        <ChatPanel
+          modeLabel={modeLabel}
+          statusLabel={statusLabel}
+          messages={messages}
+          onSend={sendChat}
+          busy={false}
+          debug={transport?.getDebug()}
+        />
       </div>
     </div>
   )
 }
 
-function safeJsonParse(s: string): unknown {
-  try {
-    return JSON.parse(s)
-  } catch {
-    return null
-  }
-}
-
-function applyReplaceStroke(state: NotepadState, edit: ReplaceStrokeEditV1): NotepadState {
-  // remove the rough stroke
-  const strokes = state.strokes.filter((s) => s.id !== edit.strokeId)
-  const replacement = validateCommands(edit.replacement, state.canvas)
-  // apply as Mot commands (keeps user undo stack untouched)
-  return applyCommands({ ...state, strokes }, replacement)
+function statusFromTransport(t: MotTransport) {
+  const s = t.getStatus()
+  if (s === 'stub') return 'Realtime unavailable (stub)'
+  if (s === 'connected') return 'Connected'
+  if (s === 'disconnected') return 'Disconnected (retrying…)'
+  return 'Connecting…'
 }
