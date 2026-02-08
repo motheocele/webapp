@@ -1,0 +1,31 @@
+[Unit]
+Description=Mot Service Bus worker (mot-requests -> Web PubSub)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/bruce/.openclaw/workspace/mot-worker
+ExecStart=/usr/bin/node /home/bruce/.openclaw/workspace/mot-worker/worker.js
+Restart=always
+RestartSec=2
+
+# Environment (edit via /etc/mot-worker.env)
+EnvironmentFile=/etc/mot-worker.env
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/home/bruce/.openclaw/workspace/mot-worker
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+# Logs
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
