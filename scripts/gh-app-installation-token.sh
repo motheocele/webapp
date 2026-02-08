@@ -37,7 +37,7 @@ def b64url(b: bytes) -> str:
 appid = os.environ['APPID']
 owner = os.environ['OWNER']
 repo = os.environ['REPO']
-key_pem_raw = os.environ['KEY_PEM']
+key_pem_raw = os.environ['KEY_PEM'].strip()
 # Azure Key Vault UI/CLI can store PEM with spaces instead of newlines.
 if "BEGIN" in key_pem_raw and "END" in key_pem_raw and "\n" not in key_pem_raw:
     # Insert newlines after BEGIN and before END, then turn space-delimited base64 into newline-delimited.
