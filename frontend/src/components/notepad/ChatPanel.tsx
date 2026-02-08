@@ -2,21 +2,57 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatMessage } from '../../notepad/drawingTypes'
 
 type Props = {
+  title?: string
+  modeLabel: 'realtime' | 'stub'
+  statusLabel: string
   messages: ChatMessage[]
   onSend: (text: string) => void
   busy?: boolean
+  debug?: { sessionId: string; connected: boolean; lastRequestId?: string }
 }
 
-export default function ChatPanel({ messages, onSend, busy }: Props) {
+export default function ChatPanel({
+  title = 'Chat with Mot',
+  modeLabel,
+  statusLabel,
+  messages,
+  onSend,
+  busy,
+  debug,
+}: Props) {
   const [draft, setDraft] = useState('')
+  const [userScrolledUp, setUserScrolledUp] = useState(false)
   const listRef = useRef<HTMLDivElement | null>(null)
+  const bottomRef = useRef<HTMLDivElement | null>(null)
 
   const canSend = useMemo(() => draft.trim().length > 0 && !busy, [draft, busy])
+
+  function scrollToBottom() {
+    const el = bottomRef.current
+    if (!el) return
+    if (typeof (el as any).scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'end', behavior: 'smooth' })
+    }
+  }
 
   useEffect(() => {
     const el = listRef.current
     if (!el) return
-    el.scrollTop = el.scrollHeight
+    const listEl = el
+
+    function onScroll() {
+      const distance = listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight
+      setUserScrolledUp(distance > 40)
+    }
+
+    listEl.addEventListener('scroll', onScroll)
+    onScroll()
+    return () => listEl.removeEventListener('scroll', onScroll)
+  }, [])
+
+  useEffect(() => {
+    if (!userScrolledUp) scrollToBottom()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages.length])
 
   function send() {
@@ -27,38 +63,81 @@ export default function ChatPanel({ messages, onSend, busy }: Props) {
   }
 
   return (
-    <aside className="notepad-chat" aria-label="Chat panel">
-      <div className="notepad-chat__title">Chat with Mot (local stub)</div>
+    <aside className="chat" aria-label="Chat panel">
+      <header className="chat__header">
+        <div>
+          <div className="chat__title">{title}</div>
+          <div className="chat__subtitle">
+            <span className={modeLabel === 'realtime' ? 'badge badge--ok' : 'badge badge--warn'}>
+              {modeLabel === 'realtime' ? 'Realtime' : 'Stub fallback'}
+            </span>
+            <span className="chat__status">{statusLabel}</span>
+          </div>
+        </div>
 
-      <div className="notepad-chat__list" ref={listRef} role="log" aria-label="Message history">
+        {debug && (
+          <details className="chat__debug">
+            <summary>Debug</summary>
+            <div className="chat__debugGrid">
+              <div>
+                <div className="chat__debugKey">sessionId</div>
+                <div className="chat__debugVal">
+                  <code>{debug.sessionId}</code>
+                </div>
+              </div>
+              <div>
+                <div className="chat__debugKey">ws</div>
+                <div className="chat__debugVal">{debug.connected ? 'connected' : 'not connected'}</div>
+              </div>
+              <div>
+                <div className="chat__debugKey">last requestId</div>
+                <div className="chat__debugVal">
+                  <code>{debug.lastRequestId ?? '—'}</code>
+                </div>
+              </div>
+            </div>
+          </details>
+        )}
+      </header>
+
+      <div className="chat__list" ref={listRef} role="log" aria-label="Message history">
         {messages.length === 0 ? (
-          <div className="notepad-chat__empty muted">
-            Try: <strong>draw a house</strong>, <strong>draw a circle</strong>, or{' '}
-            <strong>write hello</strong>.
+          <div className="chat__empty">
+            Try: <strong>draw a house</strong>, <strong>draw a circle</strong>, or <strong>write hello</strong>.
           </div>
         ) : (
           messages.map((m) => (
             <div
               key={m.id}
-              className={m.role === 'user' ? 'chat-msg chat-msg--user' : 'chat-msg chat-msg--mot'}
+              className={m.role === 'user' ? 'msg msg--user' : 'msg msg--mot'}
+              aria-busy={m.pending ? 'true' : 'false'}
             >
-              <div className="chat-msg__meta">{m.role === 'user' ? 'You' : 'Mot'}</div>
-              <div className="chat-msg__text">{m.text}</div>
+              <div className="msg__bubble">
+                <div className="msg__meta">{m.role === 'user' ? 'You' : 'Mot'}</div>
+                <div className="msg__text">{m.pending ? '…' : m.text}</div>
+              </div>
             </div>
           ))
         )}
+        <div ref={bottomRef} />
       </div>
 
-      <div className="notepad-chat__composer">
+      {userScrolledUp && messages.length > 0 && (
+        <button type="button" className="chat__jump" onClick={scrollToBottom} aria-label="Jump to latest">
+          Jump to latest
+        </button>
+      )}
+
+      <div className="chat__composer">
         <label className="np-sr" htmlFor="np-draft">
           Message to Mot
         </label>
         <textarea
           id="np-draft"
-          className="notepad-chat__input"
+          className="chat__input"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder="Type… (Enter to send, Shift+Enter for newline)"
+          placeholder="Message Mot… (Enter to send, Shift+Enter for newline)"
           rows={3}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -73,6 +152,7 @@ export default function ChatPanel({ messages, onSend, busy }: Props) {
           onClick={send}
           disabled={!canSend}
           title="Send"
+          aria-label="Send message"
         >
           Send
         </button>

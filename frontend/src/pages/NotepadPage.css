@@ -108,7 +108,7 @@
   border-color: rgba(100, 108, 255, 0.4);
 }
 
-.notepad-chat {
+.chat {
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -119,64 +119,151 @@
   background: rgba(0, 0, 0, 0.18);
 }
 
-.notepad-chat__title {
+.chat__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chat__title {
   font-weight: 650;
 }
 
-.notepad-chat__list {
+.chat__subtitle {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 4px;
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.chat__status {
+  color: color-mix(in oklab, currentColor 75%, transparent);
+}
+
+.badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 12px;
+}
+
+.badge--ok {
+  border-color: rgba(34, 197, 94, 0.35);
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.badge--warn {
+  border-color: rgba(234, 179, 8, 0.35);
+  background: rgba(234, 179, 8, 0.1);
+}
+
+.chat__debug {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+.chat__debug summary {
+  cursor: pointer;
+}
+
+.chat__debugGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.chat__debugKey {
+  opacity: 0.7;
+}
+
+.chat__debugVal code {
+  font-size: 11px;
+}
+
+.chat__list {
   flex: 1;
   overflow: auto;
-  padding: 8px;
+  padding: 12px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.notepad-chat__empty {
+.chat__empty {
   padding: 10px;
+  color: color-mix(in oklab, currentColor 75%, transparent);
 }
 
-.chat-msg {
-  padding: 10px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.03);
-  margin-bottom: 8px;
+.msg {
+  display: flex;
+  margin-bottom: 10px;
 }
 
-.chat-msg--user {
-  border-color: rgba(100, 108, 255, 0.35);
+.msg--user {
+  justify-content: flex-end;
 }
 
-.chat-msg--mot {
-  border-color: rgba(30, 58, 138, 0.35);
+.msg--mot {
+  justify-content: flex-start;
 }
 
-.chat-msg__meta {
+.msg__bubble {
+  max-width: min(70%, 520px);
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.msg--user .msg__bubble {
+  background: rgba(100, 108, 255, 0.12);
+  border-color: rgba(100, 108, 255, 0.25);
+}
+
+.msg__meta {
   font-size: 12px;
   opacity: 0.75;
   margin-bottom: 4px;
 }
 
-.chat-msg__text {
+.msg__text {
   white-space: pre-wrap;
 }
 
-.notepad-chat__composer {
+.chat__jump {
+  align-self: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.22);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.chat__composer {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.notepad-chat__input {
+.chat__input {
   resize: vertical;
   min-height: 60px;
   padding: 10px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  background: #fff;
+  color: #000;
+  caret-color: #000;
   font: inherit;
+}
+
+.chat__input::placeholder {
+  color: #6b7280;
 }
 
 .np-sr {
