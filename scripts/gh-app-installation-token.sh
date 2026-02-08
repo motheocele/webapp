@@ -34,7 +34,14 @@ def b64url(b: bytes) -> str:
 appid = os.environ['APPID']
 owner = os.environ['OWNER']
 repo = os.environ['REPO']
-key_pem = os.environ['KEY_PEM'].encode()
+key_pem_raw = os.environ['KEY_PEM']
+# Azure Key Vault UI/CLI can store PEM with spaces instead of newlines.
+if "BEGIN" in key_pem_raw and "END" in key_pem_raw and "\n" not in key_pem_raw:
+    key_pem_raw = key_pem_raw.replace("-----BEGIN RSA PRIVATE KEY----- ", "-----BEGIN RSA PRIVATE KEY-----\n")
+    key_pem_raw = key_pem_raw.replace(" -----END RSA PRIVATE KEY-----", "\n-----END RSA PRIVATE KEY-----\n")
+    # Replace remaining spaces in the base64 block with newlines.
+    key_pem_raw = key_pem_raw.replace(" ", "\n")
+key_pem = key_pem_raw.encode()
 
 now = int(time.time())
 header = {"alg":"RS256","typ":"JWT"}
