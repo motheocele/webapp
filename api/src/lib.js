@@ -25,12 +25,15 @@ function validateMotRequest(body) {
   if (!body || typeof body !== 'object') {
     return { ok: false, message: 'Body must be a JSON object' };
   }
-  const { sessionId } = body;
+  const { sessionId, requestId } = body;
   if (typeof sessionId !== 'string' || sessionId.trim().length === 0) {
     return { ok: false, message: 'sessionId is required' };
   }
+  if (typeof requestId !== 'string' || requestId.trim().length === 0) {
+    return { ok: false, message: 'requestId is required' };
+  }
   // Keep permissive: allow extra fields.
-  return { ok: true, sessionId: sessionId.trim() };
+  return { ok: true, sessionId: sessionId.trim(), requestId: requestId.trim() };
 }
 
 module.exports = {

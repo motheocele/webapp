@@ -1,7 +1,7 @@
 import type { DrawingCommand, NotepadState, Stroke } from './drawingTypes'
 import { applyCommands, validateCommands } from './commands'
 import { postMotRequest, negotiate } from './apiClient'
-import { connectPubSub } from './pubsubClient'
+import { connectPubSubWs, type PubSubWsDebug } from './pubsubWs'
 import {
   LIMITS,
   clampStrokeForSend,
@@ -27,7 +27,14 @@ export interface MotTransport {
   onReply(cb: (reply: MotReply) => void): () => void
   getModeLabel(): string
   getStatus(): ConnectionStatus
-  getDebug(): { sessionId: string; connected: boolean; lastRequestId?: string }
+  getDebug(): {
+    sessionId: string
+    mode: 'realtime' | 'stub'
+    status: ConnectionStatus
+    connected: boolean
+    lastRequestId?: string
+    pubsub?: PubSubWsDebug
+  }
   dispose(): Promise<void>
 }
 
@@ -104,7 +111,13 @@ export class MotStubTransport implements MotTransport {
   }
 
   getDebug() {
-    return { sessionId: this.sessionId, connected: false, lastRequestId: this.lastRequestId }
+    return {
+      sessionId: this.sessionId,
+      mode: 'stub' as const,
+      status: 'stub' as const,
+      connected: false,
+      lastRequestId: this.lastRequestId,
+    }
   }
 
   async dispose() {
@@ -120,18 +133,40 @@ export class MotRealtimeTransport implements MotTransport {
   private status: ConnectionStatus = 'connecting'
   private sessionId: string
 
+  private pubsubDebug: PubSubWsDebug | undefined
+
   constructor(sessionId: string) {
     this.sessionId = sessionId
   }
 
   async init() {
+    // Important: if negotiate succeeds, we stay in realtime mode even if WS is still connecting.
     this.status = 'connecting'
 
     const nego = await negotiate(this.sessionId)
 
-    const conn = await connectPubSub({
+    this.pubsubDebug = {
+      negotiate: {
+        status: 'ok',
+        httpStatus: 200,
+        hub: nego.hub,
+        group: nego.group,
+        urlHost: safeUrlHost(nego.url),
+      },
+      ws: {
+        readyState: 3,
+        reconnectAttempt: 0,
+        urlHost: safeUrlHost(nego.url),
+      },
+      joinGroup: {
+        status: 'idle',
+      },
+    }
+
+    const conn = connectPubSubWs({
       url: nego.url,
       group: nego.group,
+      hub: nego.hub,
       handlers: {
         onConnected: () => {
           this.connected = true
@@ -144,6 +179,9 @@ export class MotRealtimeTransport implements MotTransport {
         onError: () => {
           this.connected = false
           this.status = 'disconnected'
+        },
+        onDebug: (d) => {
+          this.pubsubDebug = d
         },
         onServerMessage: (msg) => {
           const json = typeof msg === 'string' ? safeJsonParse(msg) : msg
@@ -163,9 +201,6 @@ export class MotRealtimeTransport implements MotTransport {
     })
 
     this.stop = conn.stop
-    // If the WS connects slowly, the status will update via events.
-    // Consider it ready once negotiate + start completes.
-    if (!this.connected) this.status = 'connected'
   }
 
   async sendChat(text: string, state: NotepadState): Promise<string> {
@@ -224,7 +259,14 @@ export class MotRealtimeTransport implements MotTransport {
   }
 
   getDebug() {
-    return { sessionId: this.sessionId, connected: this.connected, lastRequestId: this.lastRequestId }
+    return {
+      sessionId: this.sessionId,
+      mode: 'realtime' as const,
+      status: this.status,
+      connected: this.connected,
+      lastRequestId: this.lastRequestId,
+      pubsub: this.pubsubDebug,
+    }
   }
 
   async dispose() {
@@ -233,15 +275,27 @@ export class MotRealtimeTransport implements MotTransport {
 }
 
 export async function createBestEffortTransport(sessionId: string): Promise<MotTransport> {
-  // Rule: default to realtime, only fall back to stub if negotiate/connect fails.
-  const rt = new MotRealtimeTransport(sessionId)
+  // Rule:
+  // - If negotiate succeeds (HTTP 200), we MUST remain in realtime mode (even if WS is still connecting).
+  // - Only fall back to stub if negotiate endpoint is missing / disabled (404/501) or repeatedly fails.
   try {
+    const rt = new MotRealtimeTransport(sessionId)
     await rt.init()
     return rt
-  } catch {
-    const stub = new MotStubTransport(sessionId)
-    await stub.init()
-    return stub
+  } catch (err) {
+    const msg = String(err)
+    const isMissing = msg.includes('negotiate failed: 404') || msg.includes('negotiate failed: 501')
+    if (isMissing) {
+      const stub = new MotStubTransport(sessionId)
+      await stub.init()
+      return stub
+    }
+    // Otherwise, keep realtime mode and surface connection errors in the debug panel.
+    const rt = new MotRealtimeTransport(sessionId)
+    await rt.init().catch(() => {
+      // swallow
+    })
+    return rt
   }
 }
 
@@ -267,5 +321,13 @@ function safeJsonParse(s: string): unknown {
     return JSON.parse(s)
   } catch {
     return null
+  }
+}
+
+function safeUrlHost(url: string): string {
+  try {
+    return new URL(url).host
+  } catch {
+    return 'invalid-url'
   }
 }
