@@ -46,13 +46,24 @@ export default function NotepadPage() {
 
       unsub = t.onReply((reply) => {
         // Replace the pending Mot bubble for this request.
-        setMessages((prev) =>
-          prev.map((m) =>
+        // Extra debug: detect if we received a reply before the pending bubble existed.
+        setMessages((prev) => {
+          const hasPending = prev.some((m) => m.role === 'mot' && m.pending && m.requestId === reply.requestId)
+          if (!hasPending) {
+            // eslint-disable-next-line no-console
+            console.warn('[mot] reply has no matching pending bubble', {
+              requestId: reply.requestId,
+              sessionId,
+              replyTextPreview: reply.replyText?.slice?.(0, 120),
+              pendingCount: prev.filter((m) => m.role === 'mot' && m.pending).length,
+            })
+          }
+          return prev.map((m) =>
             m.role === 'mot' && m.pending && m.requestId === reply.requestId
               ? { ...m, pending: false, text: reply.replyText }
               : m,
-          ),
-        )
+          )
+        })
 
         setState((s) => applyMotReply(s, reply))
       })
