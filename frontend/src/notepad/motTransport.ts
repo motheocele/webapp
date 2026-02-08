@@ -22,8 +22,10 @@ export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'st
 
 export interface MotTransport {
   init(): Promise<void>
-  sendChat(text: string, state: NotepadState): Promise<string> // requestId
-  sendStrokeSharpen(stroke: Stroke, state: NotepadState): Promise<string>
+  // Caller may supply requestId to avoid UI race where the reply arrives
+  // before the pending bubble is created.
+  sendChat(text: string, state: NotepadState, requestId?: string): Promise<string> // requestId
+  sendStrokeSharpen(stroke: Stroke, state: NotepadState, requestId?: string): Promise<string>
   onReply(cb: (reply: MotReply) => void): () => void
   getModeLabel(): string
   getStatus(): ConnectionStatus
@@ -70,31 +72,31 @@ export class MotStubTransport implements MotTransport {
     // no-op
   }
 
-  async sendChat(text: string, state: NotepadState): Promise<string> {
-    const requestId = newId()
-    this.lastRequestId = requestId
+  async sendChat(text: string, state: NotepadState, requestId?: string): Promise<string> {
+    const rid = requestId ?? newId()
+    this.lastRequestId = rid
 
     const res = motRespond(text, state)
     // Convert stub response to a v1-like reply.
     const commands = validateCommands(res.commands.slice(0, LIMITS.maxCommands), state.canvas)
-    const reply: MotReply = { requestId, replyText: res.replyText, commands, edits: [] }
+    const reply: MotReply = { requestId: rid, replyText: res.replyText, commands, edits: [] }
 
     queueMicrotask(() => {
       for (const h of this.handlers) h(reply)
     })
 
-    return requestId
+    return rid
   }
 
-  async sendStrokeSharpen(_stroke: Stroke, _state: NotepadState): Promise<string> {
+  async sendStrokeSharpen(_stroke: Stroke, _state: NotepadState, requestId?: string): Promise<string> {
     // MVP: no sharpening in stub mode (yet)
-    const requestId = newId()
-    this.lastRequestId = requestId
-    const reply: MotReply = { requestId, replyText: '', commands: [], edits: [] }
+    const rid = requestId ?? newId()
+    this.lastRequestId = rid
+    const reply: MotReply = { requestId: rid, replyText: '', commands: [], edits: [] }
     queueMicrotask(() => {
       for (const h of this.handlers) h(reply)
     })
-    return requestId
+    return rid
   }
 
   onReply(cb: (reply: MotReply) => void) {
@@ -224,13 +226,13 @@ export class MotRealtimeTransport implements MotTransport {
     this.stop = conn.stop
   }
 
-  async sendChat(text: string, state: NotepadState): Promise<string> {
-    const requestId = newId()
-    this.lastRequestId = requestId
+  async sendChat(text: string, state: NotepadState, requestId?: string): Promise<string> {
+    const rid = requestId ?? newId()
+    this.lastRequestId = rid
 
     const req: RequestMessageV1 = {
       v: 1,
-      requestId,
+      requestId: rid,
       sessionId: this.sessionId,
       type: 'chat_draw',
       createdAt: nowIso(),
@@ -241,18 +243,18 @@ export class MotRealtimeTransport implements MotTransport {
     }
 
     await postMotRequest(req)
-    return requestId
+    return rid
   }
 
-  async sendStrokeSharpen(stroke: Stroke, state: NotepadState): Promise<string> {
-    const requestId = newId()
-    this.lastRequestId = requestId
+  async sendStrokeSharpen(stroke: Stroke, state: NotepadState, requestId?: string): Promise<string> {
+    const rid = requestId ?? newId()
+    this.lastRequestId = rid
 
     const safeStroke = clampStrokeForSend(stroke, state.canvas)
 
     const req: RequestMessageV1 = {
       v: 1,
-      requestId,
+      requestId: rid,
       sessionId: this.sessionId,
       type: 'stroke_sharpen',
       createdAt: nowIso(),
@@ -263,7 +265,7 @@ export class MotRealtimeTransport implements MotTransport {
     }
 
     await postMotRequest(req)
-    return requestId
+    return rid
   }
 
   onReply(cb: (reply: MotReply) => void) {
