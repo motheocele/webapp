@@ -27,6 +27,35 @@
   letter-spacing: 0.2px;
 }
 
+.app-header__brandLink {
+  color: inherit;
+  text-decoration: none;
+}
+
+.app-header__nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-header__navLink {
+  color: rgba(255, 255, 255, 0.86);
+  text-decoration: none;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+}
+
+.app-header__navLink:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.app-header__navLink.is-active {
+  color: rgba(255, 255, 255, 0.96);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .app-header__spacer {
   flex: 1;
 }
