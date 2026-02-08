@@ -6,24 +6,25 @@ import { addPoint, commitStroke, createStroke, redo, undo } from '../../notepad/
 type Props = {
   state: NotepadState
   onChange: (next: NotepadState) => void
+  onStrokeCommitted?: (stroke: Stroke) => void
 }
 
 function newId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-function clamp01(v: number) {
-  return Math.min(1, Math.max(0, v))
+function clamp(v: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, v))
 }
 
-function pointFromEvent(canvas: HTMLCanvasElement, e: PointerEvent): StrokePoint {
+function pointFromEvent(canvas: HTMLCanvasElement, state: NotepadState, e: PointerEvent): StrokePoint {
   const rect = canvas.getBoundingClientRect()
-  const x = clamp01((e.clientX - rect.left) / rect.width)
-  const y = clamp01((e.clientY - rect.top) / rect.height)
+  const x = clamp(e.clientX - rect.left, 0, state.canvas.width)
+  const y = clamp(e.clientY - rect.top, 0, state.canvas.height)
   return { x, y, t: Date.now() }
 }
 
-export default function CanvasBoard({ state, onChange }: Props) {
+export default function CanvasBoard({ state, onChange, onStrokeCommitted }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [penColor, setPenColor] = useState('#000000')
@@ -44,24 +45,29 @@ export default function CanvasBoard({ state, onChange }: Props) {
 
   const dpr = useMemo(() => (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1), [])
 
-  // Resize observer to keep canvas crisp and preserve content via re-render.
+  // Resize observer: keep canvas crisp and update canvas meta in state.
   useEffect(() => {
     const canvas = canvasRef.current
     const container = containerRef.current
     if (!canvas || !container) return
 
     const ro = new ResizeObserver(() => {
-      resizeCanvasToDisplaySize(canvas, dpr)
-      renderNotepad(canvas, state)
+      const { width, height } = resizeCanvasToDisplaySize(canvas, container, dpr)
+      onChange({ ...state, canvas: { width, height, dpr } })
+      renderNotepad(canvas, { ...state, canvas: { width, height, dpr } })
     })
     ro.observe(container)
 
     // initial
-    resizeCanvasToDisplaySize(canvas, dpr)
-    renderNotepad(canvas, state)
+    const { width, height } = resizeCanvasToDisplaySize(canvas, container, dpr)
+    if (state.canvas.width !== width || state.canvas.height !== height || state.canvas.dpr !== dpr) {
+      onChange({ ...state, canvas: { width, height, dpr } })
+    }
+    renderNotepad(canvas, { ...state, canvas: { width, height, dpr } })
 
     return () => ro.disconnect()
-  }, [dpr, state])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dpr])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -70,14 +76,14 @@ export default function CanvasBoard({ state, onChange }: Props) {
   }, [state])
 
   useEffect(() => {
-    const maybeCanvas = canvasRef.current
-    if (!maybeCanvas) return
-    const canvasEl: HTMLCanvasElement = maybeCanvas
+    const canvasEl = canvasRef.current
+    if (!canvasEl) return
+    const canvas = canvasEl
 
     function onPointerDown(e: PointerEvent) {
       if (e.button !== 0 && e.pointerType === 'mouse') return
-      canvasEl.setPointerCapture(e.pointerId)
-      const start = pointFromEvent(canvasEl, e)
+      canvas.setPointerCapture(e.pointerId)
+      const start = pointFromEvent(canvas, state, e)
       const stroke = createStroke({ id: newId(), color: penColor, width: penWidth, start })
       drawingRef.current = { active: true, stroke, pointerId: e.pointerId }
 
@@ -89,7 +95,7 @@ export default function CanvasBoard({ state, onChange }: Props) {
     function onPointerMove(e: PointerEvent) {
       const d = drawingRef.current
       if (!d.active || !d.stroke || d.pointerId !== e.pointerId) return
-      const p = pointFromEvent(canvasEl, e)
+      const p = pointFromEvent(canvas, state, e)
       d.stroke = addPoint(d.stroke, p)
       drawingRef.current = d
 
@@ -109,27 +115,29 @@ export default function CanvasBoard({ state, onChange }: Props) {
         undoneStrokes: state.undoneStrokes,
       }
       const history = commitStroke(baseHistory, d.stroke)
+      const committed = d.stroke
       onChange({ ...state, strokes: history.strokes, undoneStrokes: history.undoneStrokes })
 
       drawingRef.current = { active: false, stroke: null, pointerId: null }
+      onStrokeCommitted?.(committed)
       e.preventDefault()
     }
 
-    canvasEl.addEventListener('pointerdown', onPointerDown)
-    canvasEl.addEventListener('pointermove', onPointerMove)
-    canvasEl.addEventListener('pointerup', endPointer)
-    canvasEl.addEventListener('pointercancel', endPointer)
+    canvas.addEventListener('pointerdown', onPointerDown)
+    canvas.addEventListener('pointermove', onPointerMove)
+    canvas.addEventListener('pointerup', endPointer)
+    canvas.addEventListener('pointercancel', endPointer)
 
     return () => {
-      canvasEl.removeEventListener('pointerdown', onPointerDown)
-      canvasEl.removeEventListener('pointermove', onPointerMove)
-      canvasEl.removeEventListener('pointerup', endPointer)
-      canvasEl.removeEventListener('pointercancel', endPointer)
+      canvas.removeEventListener('pointerdown', onPointerDown)
+      canvas.removeEventListener('pointermove', onPointerMove)
+      canvas.removeEventListener('pointerup', endPointer)
+      canvas.removeEventListener('pointercancel', endPointer)
     }
-  }, [penColor, penWidth, state, onChange])
+  }, [penColor, penWidth, state, onChange, onStrokeCommitted])
 
   function onClear() {
-    onChange({ strokes: [], undoneStrokes: [], motCommands: [] })
+    onChange({ ...state, strokes: [], undoneStrokes: [], motCommands: [] })
   }
 
   function onUndo() {

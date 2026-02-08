@@ -9,6 +9,13 @@ function includesAny(haystack: string, needles: string[]) {
   return needles.some((n) => haystack.includes(n))
 }
 
+function px(state: NotepadState, fx: number, fy: number) {
+  return {
+    x: Math.round(state.canvas.width * fx),
+    y: Math.round(state.canvas.height * fy),
+  }
+}
+
 export function motRespond(message: string, state: NotepadState): MotResponse {
   const raw = message.trim()
   const m = raw.toLowerCase()
@@ -31,13 +38,14 @@ export function motRespond(message: string, state: NotepadState): MotResponse {
   const writeMatch = raw.match(/\b(write|text)\s+(.+)/i)
   if (writeMatch) {
     const text = writeMatch[2].trim().replace(/^"|"$/g, '')
+    const p = px(state, 0.08, 0.08)
     return {
       replyText: `Writing “${text}”.`,
       commands: [
         {
           kind: 'text',
-          x: 0.08,
-          y: 0.08,
+          x: p.x,
+          y: p.y,
           text,
           fontSize: 28,
           color: '#1e3a8a',
@@ -52,9 +60,9 @@ export function motRespond(message: string, state: NotepadState): MotResponse {
       commands: [
         {
           kind: 'circle',
-          cx: 0.5,
-          cy: 0.5,
-          r: 0.22,
+          cx: Math.round(state.canvas.width * 0.5),
+          cy: Math.round(state.canvas.height * 0.5),
+          r: Math.round(Math.min(state.canvas.width, state.canvas.height) * 0.22),
           strokeColor: '#1e3a8a',
           strokeWidth: 4,
           fillColor: 'rgba(30, 58, 138, 0.08)',
@@ -69,10 +77,10 @@ export function motRespond(message: string, state: NotepadState): MotResponse {
       commands: [
         {
           kind: 'rect',
-          x: 0.2,
-          y: 0.25,
-          w: 0.6,
-          h: 0.45,
+          x: Math.round(state.canvas.width * 0.2),
+          y: Math.round(state.canvas.height * 0.25),
+          w: Math.round(state.canvas.width * 0.6),
+          h: Math.round(state.canvas.height * 0.45),
           strokeColor: '#1e3a8a',
           strokeWidth: 4,
           fillColor: 'rgba(30, 58, 138, 0.06)',
@@ -87,30 +95,26 @@ export function motRespond(message: string, state: NotepadState): MotResponse {
       commands: [
         {
           kind: 'rect',
-          x: 0.25,
-          y: 0.45,
-          w: 0.5,
-          h: 0.35,
+          x: Math.round(state.canvas.width * 0.25),
+          y: Math.round(state.canvas.height * 0.45),
+          w: Math.round(state.canvas.width * 0.5),
+          h: Math.round(state.canvas.height * 0.35),
           strokeColor: '#1e3a8a',
           strokeWidth: 4,
           fillColor: 'rgba(30, 58, 138, 0.04)',
         },
         {
           kind: 'polyline',
-          points: [
-            { x: 0.25, y: 0.45 },
-            { x: 0.5, y: 0.2 },
-            { x: 0.75, y: 0.45 },
-          ],
+          points: [px(state, 0.25, 0.45), px(state, 0.5, 0.2), px(state, 0.75, 0.45)],
           color: '#1e3a8a',
           width: 4,
         },
         {
           kind: 'rect',
-          x: 0.47,
-          y: 0.62,
-          w: 0.06,
-          h: 0.18,
+          x: Math.round(state.canvas.width * 0.47),
+          y: Math.round(state.canvas.height * 0.62),
+          w: Math.round(state.canvas.width * 0.06),
+          h: Math.round(state.canvas.height * 0.18),
           strokeColor: '#1e3a8a',
           strokeWidth: 3,
           fillColor: 'rgba(30, 58, 138, 0.08)',
@@ -125,21 +129,29 @@ export function motRespond(message: string, state: NotepadState): MotResponse {
       commands: [
         {
           kind: 'circle',
-          cx: 0.5,
-          cy: 0.5,
-          r: 0.25,
+          cx: Math.round(state.canvas.width * 0.5),
+          cy: Math.round(state.canvas.height * 0.5),
+          r: Math.round(Math.min(state.canvas.width, state.canvas.height) * 0.25),
           strokeColor: '#1e3a8a',
           strokeWidth: 4,
         },
-        { kind: 'circle', cx: 0.42, cy: 0.45, r: 0.03, fillColor: '#1e3a8a' },
-        { kind: 'circle', cx: 0.58, cy: 0.45, r: 0.03, fillColor: '#1e3a8a' },
+        {
+          kind: 'circle',
+          cx: Math.round(state.canvas.width * 0.42),
+          cy: Math.round(state.canvas.height * 0.45),
+          r: Math.round(Math.min(state.canvas.width, state.canvas.height) * 0.03),
+          fillColor: '#1e3a8a',
+        },
+        {
+          kind: 'circle',
+          cx: Math.round(state.canvas.width * 0.58),
+          cy: Math.round(state.canvas.height * 0.45),
+          r: Math.round(Math.min(state.canvas.width, state.canvas.height) * 0.03),
+          fillColor: '#1e3a8a',
+        },
         {
           kind: 'polyline',
-          points: [
-            { x: 0.4, y: 0.6 },
-            { x: 0.5, y: 0.67 },
-            { x: 0.6, y: 0.6 },
-          ],
+          points: [px(state, 0.4, 0.6), px(state, 0.5, 0.67), px(state, 0.6, 0.6)],
           color: '#1e3a8a',
           width: 4,
         },
@@ -154,18 +166,15 @@ export function motRespond(message: string, state: NotepadState): MotResponse {
     commands: [
       {
         kind: 'text',
-        x: 0.08,
-        y: 0.14,
+        x: Math.round(state.canvas.width * 0.08),
+        y: Math.round(state.canvas.height * 0.14),
         text: `Unknown intent: ${raw}`,
         fontSize: 16,
         color: 'rgba(30, 58, 138, 0.9)',
       },
       {
         kind: 'polyline',
-        points: [
-          { x: 0.08, y: 0.2 },
-          { x: 0.4, y: 0.2 },
-        ],
+        points: [px(state, 0.08, 0.2), px(state, 0.4, 0.2)],
         color: 'rgba(30, 58, 138, 0.35)',
         width: 3,
       },
