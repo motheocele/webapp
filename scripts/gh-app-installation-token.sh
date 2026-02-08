@@ -20,6 +20,11 @@ REPO="${GITHUB_REPO:-webapp}"
 appid="$(az keyvault secret show --id "$KV_GITHUB_APPID_SECRET_ID" --query value -o tsv | tr -d '\r' | tr -d '\n')"
 key_pem="$(az keyvault secret show --id "$KV_GITHUB_APP_PRIVATEKEY_SECRET_ID" --query value -o tsv)"
 
+export APPID="$appid"
+export KEY_PEM="$key_pem"
+export OWNER="$OWNER"
+export REPO="$REPO"
+
 python3 - <<'PY'
 import base64, json, os, subprocess, tempfile, time, urllib.request
 
