@@ -6,8 +6,8 @@ vi.mock('./apiClient', () => ({
   postMotRequest: vi.fn(async () => ({ requestId: 'r1' })),
 }))
 
-vi.mock('./pubsubClient', () => ({
-  connectPubSub: vi.fn(async () => ({ client: {}, stop: async () => {} })),
+vi.mock('./pubsubWs', () => ({
+  connectPubSubWs: vi.fn(() => ({ stop: async () => {} })),
 }))
 
 import { negotiate } from './apiClient'
@@ -25,10 +25,17 @@ describe('createBestEffortTransport', () => {
     expect(t.getModeLabel()).toBe('realtime')
   })
 
-  it('falls back to stub when negotiate fails', async () => {
-    ;(negotiate as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('no api'))
+  it('falls back to stub when negotiate endpoint is missing (404)', async () => {
+    ;(negotiate as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('negotiate failed: 404'))
 
     const t = await createBestEffortTransport('abc')
     expect(t.getModeLabel()).toBe('stub')
+  })
+
+  it('does not fall back to stub for transient errors when negotiate exists', async () => {
+    ;(negotiate as unknown as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network down'))
+
+    const t = await createBestEffortTransport('abc')
+    expect(t.getModeLabel()).toBe('realtime')
   })
 })

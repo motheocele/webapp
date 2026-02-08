@@ -25,7 +25,12 @@ app.http('motRequests', {
       const sb = new ServiceBusClient(connectionString);
       const sender = sb.createSender(queueName);
 
-      const messageBody = { ...body, sessionId: validation.sessionId, receivedAt: new Date().toISOString() };
+      const messageBody = {
+        ...body,
+        sessionId: validation.sessionId,
+        requestId: validation.requestId,
+        receivedAt: new Date().toISOString()
+      };
 
       await sender.sendMessages({
         body: messageBody,
@@ -37,7 +42,7 @@ app.http('motRequests', {
 
       return {
         status: 202,
-        jsonBody: { ok: true }
+        jsonBody: { requestId: validation.requestId, ok: true }
       };
     } catch (err) {
       context.error('mot/requests failed', err);

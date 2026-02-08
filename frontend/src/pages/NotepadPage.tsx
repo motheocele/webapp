@@ -20,7 +20,7 @@ export default function NotepadPage() {
   const [state, setState] = useState<NotepadState>(initialState)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [transport, setTransport] = useState<MotTransport | null>(null)
-  const [modeLabel, setModeLabel] = useState<'realtime' | 'stub'>('stub')
+  const [modeLabel, setModeLabel] = useState<'realtime' | 'stub'>('realtime')
   const [statusLabel, setStatusLabel] = useState('Connecting…')
 
   const sessionId = useMemo(() => (typeof window !== 'undefined' ? getOrCreateSessionId() : 'unknown'), [])

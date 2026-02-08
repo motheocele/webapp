@@ -8,7 +8,29 @@ type Props = {
   messages: ChatMessage[]
   onSend: (text: string) => void
   busy?: boolean
-  debug?: { sessionId: string; connected: boolean; lastRequestId?: string }
+  debug?: {
+    sessionId: string
+    mode: 'realtime' | 'stub'
+    status: string
+    connected: boolean
+    lastRequestId?: string
+    pubsub?: {
+      negotiate?: { status?: string; httpStatus?: number; error?: string; hub?: string; group?: string; urlHost?: string }
+      ws?: {
+        urlHost?: string
+        readyState?: number
+        onOpenAt?: string
+        onCloseAt?: string
+        closeCode?: number
+        closeReason?: string
+        error?: string
+        reconnectAttempt?: number
+        nextRetryMs?: number
+      }
+      joinGroup?: { status?: string; ackId?: number; success?: boolean; error?: unknown }
+      lastServerMessageSnippet?: string
+    }
+  }
 }
 
 export default function ChatPanel({
@@ -86,9 +108,74 @@ export default function ChatPanel({
                 </div>
               </div>
               <div>
-                <div className="chat__debugKey">ws</div>
-                <div className="chat__debugVal">{debug.connected ? 'connected' : 'not connected'}</div>
+                <div className="chat__debugKey">mode / status</div>
+                <div className="chat__debugVal">
+                  {debug.mode} / {debug.status}
+                </div>
               </div>
+
+              <div>
+                <div className="chat__debugKey">negotiate</div>
+                <div className="chat__debugVal">
+                  {debug.pubsub?.negotiate?.status ?? '—'}
+                  {typeof debug.pubsub?.negotiate?.httpStatus === 'number' ? ` (${debug.pubsub?.negotiate?.httpStatus})` : ''}
+                  {debug.pubsub?.negotiate?.urlHost ? ` · ${debug.pubsub?.negotiate?.urlHost}` : ''}
+                </div>
+              </div>
+              <div>
+                <div className="chat__debugKey">group</div>
+                <div className="chat__debugVal">
+                  <code>{debug.pubsub?.negotiate?.group ?? '—'}</code>
+                </div>
+              </div>
+
+              <div>
+                <div className="chat__debugKey">ws</div>
+                <div className="chat__debugVal">
+                  host: <code>{debug.pubsub?.ws?.urlHost ?? '—'}</code> · readyState: <code>{String(debug.pubsub?.ws?.readyState ?? '—')}</code>
+                  {debug.pubsub?.ws?.reconnectAttempt != null ? ` · retry #${debug.pubsub.ws.reconnectAttempt}` : ''}
+                  {debug.pubsub?.ws?.nextRetryMs != null ? ` · next ${debug.pubsub.ws.nextRetryMs}ms` : ''}
+                </div>
+              </div>
+              <div>
+                <div className="chat__debugKey">onopen</div>
+                <div className="chat__debugVal">
+                  <code>{debug.pubsub?.ws?.onOpenAt ?? '—'}</code>
+                </div>
+              </div>
+              <div>
+                <div className="chat__debugKey">onclose</div>
+                <div className="chat__debugVal">
+                  <code>{debug.pubsub?.ws?.onCloseAt ?? '—'}</code>
+                  {debug.pubsub?.ws?.closeCode != null ? ` · code ${debug.pubsub.ws.closeCode}` : ''}
+                  {debug.pubsub?.ws?.closeReason ? ` · ${debug.pubsub.ws.closeReason}` : ''}
+                </div>
+              </div>
+              <div>
+                <div className="chat__debugKey">onerror</div>
+                <div className="chat__debugVal">
+                  {debug.pubsub?.ws?.error ? <code>{debug.pubsub.ws.error}</code> : '—'}
+                </div>
+              </div>
+
+              <div>
+                <div className="chat__debugKey">joinGroup</div>
+                <div className="chat__debugVal">
+                  {debug.pubsub?.joinGroup?.status ?? '—'}
+                  {debug.pubsub?.joinGroup?.ackId != null ? ` · ackId ${debug.pubsub.joinGroup.ackId}` : ''}
+                  {typeof debug.pubsub?.joinGroup?.success === 'boolean'
+                    ? ` · ${debug.pubsub.joinGroup.success ? 'success' : 'failed'}`
+                    : ''}
+                </div>
+              </div>
+
+              <div>
+                <div className="chat__debugKey">last server message</div>
+                <div className="chat__debugVal">
+                  <code>{debug.pubsub?.lastServerMessageSnippet ?? '—'}</code>
+                </div>
+              </div>
+
               <div>
                 <div className="chat__debugKey">last requestId</div>
                 <div className="chat__debugVal">
