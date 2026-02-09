@@ -171,7 +171,7 @@ async function callMotViaOpenClaw({ sessionId, userText }) {
         content: [{ type: 'input_text', text: clampStr(userText, 20000) }],
       },
     ],
-    stream: true,
+    stream: env('OPENCLAW_STREAM', 'true') === 'true',
     max_output_tokens: Number(env('OPENCLAW_MAX_OUTPUT_TOKENS', '700')),
   }
 

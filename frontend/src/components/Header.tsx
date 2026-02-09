@@ -55,6 +55,20 @@ export default function Header() {
 
         <div className="app-header__spacer" />
 
+        <div style={{display:'flex', gap:8, alignItems:'center'}}>
+          <label style={{fontSize:12, opacity:0.85, marginRight:6}}>Zoom</label>
+          <button type="button" className="np-btn" onClick={() => {
+            const cur = Number(getComputedStyle(document.documentElement).getPropertyValue('--canvas-zoom') || 1)
+            const next = Math.max(0.25, +(cur - 0.1).toFixed(2))
+            document.documentElement.style.setProperty('--canvas-zoom', String(next))
+          }}>-</button>
+          <button type="button" className="np-btn" onClick={() => {
+            const cur = Number(getComputedStyle(document.documentElement).getPropertyValue('--canvas-zoom') || 1)
+            const next = Math.min(4, +(cur + 0.1).toFixed(2))
+            document.documentElement.style.setProperty('--canvas-zoom', String(next))
+          }}>+</button>
+        </div>
+
         <div className="app-header__menu" ref={menuRef}>
           <button
             type="button"
