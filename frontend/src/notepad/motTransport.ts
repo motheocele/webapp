@@ -239,6 +239,8 @@ export class MotRealtimeTransport implements MotTransport {
       payload: {
         text: text.slice(0, LIMITS.maxTextLen),
         canvas: state.canvas,
+        motCommands: state.motCommands,
+        strokes: state.strokes,
       },
     }
 

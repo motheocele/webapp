@@ -20,8 +20,11 @@ function clamp(v: number, min: number, max: number) {
 
 function pointFromEvent(canvas: HTMLCanvasElement, state: NotepadState, e: PointerEvent): StrokePoint {
   const rect = canvas.getBoundingClientRect()
-  const x = clamp(e.clientX - rect.left, 0, state.canvas.width)
-  const y = clamp(e.clientY - rect.top, 0, state.canvas.height)
+  // account for CSS scaling via --canvas-zoom
+  const zoomRaw = getComputedStyle(document.documentElement).getPropertyValue('--canvas-zoom') || '1'
+  const zoom = Number(zoomRaw) || 1
+  const x = clamp((e.clientX - rect.left) / zoom, 0, state.canvas.width)
+  const y = clamp((e.clientY - rect.top) / zoom, 0, state.canvas.height)
   return { x, y, t: Date.now() }
 }
 
@@ -193,6 +196,20 @@ export default function CanvasBoard({ state, onChange, onCanvasMetaChange, onStr
         </label>
 
         <div className="np-actions" role="group" aria-label="Actions">
+          <label className="np-field">
+            <span className="np-field__label">Zoom</span>
+            <button type="button" className="np-btn" onClick={() => {
+              const cur = Number(getComputedStyle(document.documentElement).getPropertyValue('--canvas-zoom') || 1)
+              const next = Math.max(0.25, +(cur - 0.1).toFixed(2))
+              document.documentElement.style.setProperty('--canvas-zoom', String(next))
+            }}>-</button>
+            <button type="button" className="np-btn" onClick={() => {
+              const cur = Number(getComputedStyle(document.documentElement).getPropertyValue('--canvas-zoom') || 1)
+              const next = Math.min(4, +(cur + 0.1).toFixed(2))
+              document.documentElement.style.setProperty('--canvas-zoom', String(next))
+            }}>+</button>
+          </label>
+
           <button type="button" className="np-btn" onClick={onClear} title="Clear canvas">
             Clear
           </button>
