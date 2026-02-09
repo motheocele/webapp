@@ -1,3 +1,7 @@
+
+:root{ --canvas-zoom: 1; }
+.notepad-canvas__surface { transform-origin: top left; }
+.notepad-canvas__surface canvas { transform: scale(var(--canvas-zoom,1)); transform-origin: top left; }
 .notepad-page {
   display: grid;
   grid-template-columns: 1fr 360px;
