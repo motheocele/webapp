@@ -20,8 +20,11 @@ function clamp(v: number, min: number, max: number) {
 
 function pointFromEvent(canvas: HTMLCanvasElement, state: NotepadState, e: PointerEvent): StrokePoint {
   const rect = canvas.getBoundingClientRect()
-  const x = clamp(e.clientX - rect.left, 0, state.canvas.width)
-  const y = clamp(e.clientY - rect.top, 0, state.canvas.height)
+  // account for CSS scaling via --canvas-zoom
+  const zoomRaw = getComputedStyle(document.documentElement).getPropertyValue('--canvas-zoom') || '1'
+  const zoom = Number(zoomRaw) || 1
+  const x = clamp((e.clientX - rect.left) / zoom, 0, state.canvas.width)
+  const y = clamp((e.clientY - rect.top) / zoom, 0, state.canvas.height)
   return { x, y, t: Date.now() }
 }
 
