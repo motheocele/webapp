@@ -161,11 +161,7 @@ async function callMotViaOpenClaw({ sessionId, userText }) {
   const url = env('OPENCLAW_GATEWAY_URL', 'http://127.0.0.1:18789')
   const token = requiredEnv('OPENCLAW_GATEWAY_TOKEN')
 
-  // NOTE: We use streaming SSE here because non-stream OpenResponses responses can
-  // legitimately take a while and some environments exhibit long waits before
-  // the final JSON is returned. Streaming gives us incremental progress and a
-  // reliable completion signal.
-  const body = {
+  const bodyTemplate = {
     model: env('OPENCLAW_AGENT', 'openclaw:main'),
     user: `canvas:${sessionId}`,
     input: [
@@ -179,93 +175,118 @@ async function callMotViaOpenClaw({ sessionId, userText }) {
     max_output_tokens: Number(env('OPENCLAW_MAX_OUTPUT_TOKENS', '700')),
   }
 
-  const controller = new AbortController()
+  // Retry logic
+  const maxAttempts = Number(env('OPENCLAW_RETRY_ATTEMPTS', '2'))
   const timeoutMs = Number(env('OPENCLAW_TIMEOUT_MS', '90000'))
-  const t = setTimeout(() => controller.abort(), timeoutMs)
 
-  try {
-    const res = await fetch(`${url.replace(/\/$/, '')}/v1/responses`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        Accept: 'text/event-stream',
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    })
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const controller = new AbortController()
+    const t = setTimeout(() => controller.abort(), timeoutMs)
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => '')
-      throw new Error(`OpenClaw /v1/responses failed: ${res.status} ${text}`)
-    }
+    try {
+      const body = bodyTemplate
+      const res = await fetch(`${url.replace(/\/$/, '')}/v1/responses`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Accept: 'text/event-stream',
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      })
 
-    if (!res.body) throw new Error('OpenClaw /v1/responses: missing response body')
+      if (!res.ok) {
+        // Capture response details for debugging
+        const text = await res.text().catch(() => '')
+        console.error('[mot-worker] OpenClaw non-OK response', { attempt, status: res.status, bodySnippet: text.slice(0, 2000) })
+        // If last attempt, throw to be handled by caller
+        if (attempt === maxAttempts) throw new Error(`OpenClaw /v1/responses failed: ${res.status} ${text}`)
+        // otherwise retry after a short backoff
+        await new Promise((r) => setTimeout(r, 500 * attempt))
+        continue
+      }
 
-    const reader = res.body.getReader()
-    const decoder = new TextDecoder('utf-8')
+      if (!res.body) {
+        console.error('[mot-worker] OpenClaw response missing body', { attempt })
+        if (attempt === maxAttempts) throw new Error('OpenClaw /v1/responses: missing response body')
+        await new Promise((r) => setTimeout(r, 500 * attempt))
+        continue
+      }
 
-    let buf = ''
-    let outText = ''
+      // Stream reader
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder('utf-8')
 
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buf += decoder.decode(value, { stream: true })
+      let buf = ''
+      let outText = ''
 
-      // SSE frames are separated by blank lines.
       while (true) {
-        const sep = buf.indexOf('\n\n')
-        if (sep === -1) break
-        const frame = buf.slice(0, sep)
-        buf = buf.slice(sep + 2)
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
 
-        // Only care about data: lines
-        const dataLines = frame
-          .split('\n')
-          .filter((l) => l.startsWith('data:'))
-          .map((l) => l.replace(/^data:\s?/, ''))
+        // SSE frames are separated by blank lines.
+        while (true) {
+          const sep = buf.indexOf('\n\n')
+          if (sep === -1) break
+          const frame = buf.slice(0, sep)
+          buf = buf.slice(sep + 2)
 
-        for (const dl of dataLines) {
-          if (!dl || dl === '[DONE]') continue
-          let obj
-          try {
-            obj = JSON.parse(dl)
-          } catch {
-            continue
-          }
+          // Only care about data: lines
+          const dataLines = frame
+            .split('\n')
+            .filter((l) => l.startsWith('data:'))
+            .map((l) => l.replace(/^data:\s?/, ''))
 
-          // Text deltas
-          if (obj?.type === 'response.output_text.delta' && typeof obj.delta === 'string') {
-            outText += obj.delta
-          }
+          for (const dl of dataLines) {
+            if (!dl || dl === '[DONE]') continue
+            let obj
+            try {
+              obj = JSON.parse(dl)
+            } catch {
+              // non-json data; ignore but keep reading
+              continue
+            }
 
-          // Some servers may emit content parts with text.
-          if (
-            obj?.type === 'response.content_part.added' &&
-            obj?.part?.type === 'output_text' &&
-            typeof obj?.part?.text === 'string'
-          ) {
-            // part.added may include empty text; ignore (deltas will follow)
-          }
+            // Text deltas
+            if (obj?.type === 'response.output_text.delta' && typeof obj.delta === 'string') {
+              outText += obj.delta
+            }
 
-          // Completion signals
-          if (obj?.type === 'response.output_text.done') {
-            // done event sometimes includes full text; prefer it if present
-            if (typeof obj.text === 'string' && obj.text.length) outText = obj.text
-          }
+            // Some servers may emit content parts with text.
+            if (
+              obj?.type === 'response.content_part.added' &&
+              obj?.part?.type === 'output_text' &&
+              typeof obj?.part?.text === 'string'
+            ) {
+              // part.added may include empty text; ignore (deltas will follow)
+            }
 
-          if (obj?.type === 'response.completed' || obj?.type === 'response.failed') {
-            return outText
+            // Completion signals
+            if (obj?.type === 'response.output_text.done') {
+              if (typeof obj.text === 'string' && obj.text.length) outText = obj.text
+            }
+
+            if (obj?.type === 'response.completed' || obj?.type === 'response.failed') {
+              return outText
+            }
           }
         }
       }
-    }
 
-    return outText
-  } finally {
-    clearTimeout(t)
+      return outText
+    } catch (err) {
+      console.error('[mot-worker] OpenClaw call error', { attempt, err: String(err) })
+      if (attempt === maxAttempts) throw err
+      await new Promise((r) => setTimeout(r, 500 * attempt))
+    } finally {
+      // ensure timer cleared
+      try { clearTimeout(t) } catch {}
+    }
   }
+
+  throw new Error('OpenClaw /v1/responses: exhausted retries')
 }
 
 async function motHandleRequest(msgBody) {
@@ -276,12 +297,45 @@ async function motHandleRequest(msgBody) {
   const preamble = buildMotPreamble({ sessionId, requestId, msgBody })
   const userText = `${preamble}\nUser says: ${text ? String(text) : '[no text]'}\n`
 
+  // Verbose logging when enabled
+  const verbose = env('MOT_WORKER_VERBOSE', 'false') === 'true'
+  if (verbose) {
+    console.log('[mot-worker] verbose: calling Mot with userText snippet:', userText.slice(0, 800))
+  }
+
   const modelText = await callMotViaOpenClaw({ sessionId, userText })
-  const parsed = safeJsonFromModelText(modelText)
+
+  if (verbose) {
+    console.log('[mot-worker] verbose: raw modelText:', String(modelText))
+  }
+
+  let parsed
+  try {
+    parsed = safeJsonFromModelText(modelText)
+  } catch (err) {
+    // Surface full modelText for debugging when parsing fails
+    console.error('[mot-worker] model returned invalid JSON', {
+      requestId,
+      sessionId,
+      err: String(err),
+      modelText: String(modelText),
+    })
+    throw err
+  }
 
   const replyText = typeof parsed.replyText === 'string' ? parsed.replyText : 'OK.'
   const commands = Array.isArray(parsed.commands) ? parsed.commands : []
   const edits = Array.isArray(parsed.edits) ? parsed.edits : []
+
+  if (verbose) {
+    console.log('[mot-worker] verbose: parsed result', {
+      requestId,
+      sessionId,
+      replyTextLen: replyText?.length ?? 0,
+      commands: { count: commands.length, kinds: commands.map(c => c.kind).slice(0,10) },
+      edits: { count: edits.length },
+    })
+  }
 
   return { replyText, commands, edits }
 }
@@ -325,11 +379,29 @@ async function main() {
         try {
           const group = groupNameForSession(sessionId)
 
+          // Verbose: log full incoming message body when enabled
+          if (env('MOT_WORKER_VERBOSE', 'false') === 'true') {
+            try {
+              console.log('[mot-worker] verbose: incoming message body', JSON.stringify(body))
+            } catch (e) {
+              console.log('[mot-worker] verbose: incoming message body (stringified failed)', String(body))
+            }
+          }
+
           // 1) do Mot work
           const res = await motHandleRequest(body)
 
           // 2) publish to PubSub group
           const evt = toResponseEvent({ requestId, sessionId, ...res })
+
+          if (env('MOT_WORKER_VERBOSE', 'false') === 'true') {
+            try {
+              console.log('[mot-worker] verbose: outgoing event', JSON.stringify(evt))
+            } catch (e) {
+              console.log('[mot-worker] verbose: outgoing event (stringify failed)', String(evt))
+            }
+          }
+
           await pubsub.sendToGroup(group, evt)
 
           // 3) complete message
