@@ -57,7 +57,21 @@ export default function NotepadPage() {
               replyTextPreview: reply.replyText?.slice?.(0, 120),
               pendingCount: prev.filter((m) => m.role === 'mot' && m.pending).length,
             })
+
+            // Don't drop the reply on the floor — show it as a normal Mot message.
+            return [
+              ...prev,
+              {
+                id: newMsgId(),
+                role: 'mot',
+                text: reply.replyText,
+                requestId: reply.requestId,
+                pending: false,
+                createdAt: Date.now(),
+              },
+            ]
           }
+
           return prev.map((m) =>
             m.role === 'mot' && m.pending && m.requestId === reply.requestId
               ? { ...m, pending: false, text: reply.replyText }
